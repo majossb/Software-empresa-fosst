@@ -1,0 +1,7 @@
+Hola {{ usuario.first_name }},
+
+Gracias por registrarte en DiagnostISST. Activa tu cuenta haciendo clic en el siguiente enlace (vence en 48 horas):
+
+{{ enlace }}
+
+Si no solicitaste esta cuenta, ignora este mensaje.

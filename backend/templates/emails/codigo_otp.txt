@@ -1,0 +1,7 @@
+Hola {{ usuario.first_name }},
+
+Tu código de verificación para iniciar sesión en DiagnostISST es:
+
+{{ codigo }}
+
+Este código vence en 5 minutos. Si no intentaste iniciar sesión, cambia tu contraseña de inmediato.

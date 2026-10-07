@@ -1,0 +1,8 @@
+Hola {{ usuario.first_name }},
+
+Detectamos un nuevo inicio de sesión en tu cuenta DiagnostISST:
+
+IP: {{ ip }}
+Dispositivo/navegador: {{ user_agent }}
+
+Si fuiste tú, no necesitas hacer nada. Si no reconoces este acceso, cambia tu contraseña de inmediato y contacta al administrador.
