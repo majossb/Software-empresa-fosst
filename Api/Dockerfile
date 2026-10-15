@@ -1,4 +1,5 @@
-FROM python:3.11-slim
+# 3.12: el código usa f-strings con '\' (PEP 701), no válido en 3.11
+FROM python:3.12-slim
 
 # Evita escritura de bytecode en disco y activa buffer directo en stdout/stderr
 ENV PYTHONUNBUFFERED=1 \

@@ -14,7 +14,8 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      # 5433 en el host para no chocar con otro PostgreSQL local en 5432
+      - "${POSTGRES_PORT:-5433}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -26,7 +27,9 @@ services:
       - fosst-net
 
   minio:
-    image: minio/minio:latest
+    # minio/minio fue retirado de Docker Hub (2026). pgsty/silo es un fork
+    # drop-in compatible con S3 y con la CLI/console de MinIO.
+    image: pgsty/silo:latest
     container_name: fosst_minio
     restart: always
     command: server /data --console-address ":9001"
@@ -58,6 +61,7 @@ services:
   api:
     build: .
     image: fosst-api:latest
+    pull_policy: build
     container_name: fosst_api
     restart: always
     env_file: .env
@@ -91,6 +95,7 @@ services:
   worker:
     build: .
     image: fosst-api:latest
+    pull_policy: build
     container_name: fosst_celery_worker
     restart: always
     env_file: .env
@@ -114,6 +119,7 @@ services:
   beat:
     build: .
     image: fosst-api:latest
+    pull_policy: build
     container_name: fosst_celery_beat
     restart: always
     env_file: .env
