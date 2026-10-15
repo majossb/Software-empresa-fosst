@@ -69,6 +69,7 @@ AUTH_USER_MODEL = "accounts.Usuario"
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    "whitenoise.middleware.WhiteNoiseMiddleware",   # sirve estáticos (admin/DRF) vía gunicorn
     "corsheaders.middleware.CorsMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
@@ -114,6 +115,9 @@ _storage_options = {
     "bucket_name": env("AWS_STORAGE_BUCKET_NAME", default="fosst-media"),
     "region_name": env("AWS_S3_REGION_NAME", default="us-east-1"),
     "file_overwrite": False,
+    # URL de los archivos (evita firmas hacia el hostname interno de MinIO/S3)
+    "querystring_auth": env.bool("AWS_QUERYSTRING_AUTH", default=True),
+    "url_protocol": env("AWS_S3_URL_PROTOCOL", default="https:"),
 }
 _s3_endpoint = env("AWS_S3_ENDPOINT_URL", default="")
 if _s3_endpoint:
@@ -129,7 +133,8 @@ STORAGES = {
         "OPTIONS": _storage_options,
     },
     "staticfiles": {
-        "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage",
+        # WhiteNoise comprime y sirve los estáticos (admin, DRF) vía gunicorn
+        "BACKEND": "whitenoise.storage.CompressedStaticFilesStorage",
     },
 }
 

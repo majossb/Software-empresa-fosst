@@ -1,7 +1,5 @@
-version: '3.8'
-
 # Infraestructura + aplicación de la API (Django + DRF + Celery)
-# Puertos host: API 8000 | Postgres 5432 | Redis 6379 | MinIO 9000/9001
+# Puertos host: API 8000 | Postgres 5433 | Redis 6379 | MinIO 9000/9001
 # Red compartida con el Frontend: fosst-net (para el proxy de nginx)
 
 services:
@@ -29,7 +27,8 @@ services:
   minio:
     # minio/minio fue retirado de Docker Hub (2026). pgsty/silo es un fork
     # drop-in compatible con S3 y con la CLI/console de MinIO.
-    image: pgsty/silo:latest
+    # Fijado por digest para builds reproducibles.
+    image: pgsty/silo@sha256:aaac6bce13eb99316b3c88bd20143fc3c38ab607585256a411a095c44ee57f62
     container_name: fosst_minio
     restart: always
     command: server /data --console-address ":9001"
@@ -73,15 +72,22 @@ services:
       AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-minioadmin}
       AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
       AWS_S3_ENDPOINT_URL: http://minio:9000
+      # URLs de archivos accesibles desde el navegador (host, no hostname interno)
+      AWS_S3_CUSTOM_DOMAIN: localhost:9000/fosst-media
+      AWS_S3_URL_PROTOCOL: "http:"
+      AWS_QUERYSTRING_AUTH: "False"
       CORS_ALLOWED_ORIGINS: http://localhost:8080
       CSRF_TRUSTED_ORIGINS: http://localhost:8080,http://localhost:8000
       FRONTEND_URL: http://localhost:8080
     command: >
       sh -c "python manage.py migrate --noinput &&
              python manage.py collectstatic --noinput &&
+             python manage.py ensure_storage_bucket &&
              gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 3"
     ports:
       - "8000:8000"
+    volumes:
+      - ./backups:/backups
     depends_on:
       postgres:
         condition: service_healthy
@@ -107,7 +113,12 @@ services:
       AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-minioadmin}
       AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
       AWS_S3_ENDPOINT_URL: http://minio:9000
+      AWS_S3_CUSTOM_DOMAIN: localhost:9000/fosst-media
+      AWS_S3_URL_PROTOCOL: "http:"
+      AWS_QUERYSTRING_AUTH: "False"
     command: celery -A config worker -l info
+    volumes:
+      - ./backups:/backups
     depends_on:
       postgres:
         condition: service_healthy
@@ -132,6 +143,8 @@ services:
       AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
       AWS_S3_ENDPOINT_URL: http://minio:9000
     command: celery -A config beat -l info
+    volumes:
+      - ./backups:/backups
     depends_on:
       postgres:
         condition: service_healthy

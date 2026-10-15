@@ -1,5 +1,3 @@
-version: '3.8'
-
 # Frontend (React + Vite) servido con Nginx.
 # Puerto host: Web 8080 | HTTPS 443 (opcional, requiere ./certs)
 # Comparte la red fosst-net con la API para el proxy /api -> api:8000
