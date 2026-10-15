@@ -1,0 +1,28 @@
+version: '3.8'
+
+# Frontend (React + Vite) servido con Nginx.
+# Puerto host: Web 8080 | HTTPS 443 (opcional, requiere ./certs)
+# Comparte la red fosst-net con la API para el proxy /api -> api:8000
+
+services:
+  frontend:
+    build:
+      context: .
+      args:
+        VITE_API_URL: /api
+        VITE_USE_MOCK: "false"
+    image: fosst-frontend:latest
+    container_name: fosst_frontend
+    restart: always
+    ports:
+      - "8080:80"
+      # - "443:443"   # HTTPS opcional (descomentar junto al server{} de nginx.conf)
+    # volumes:
+    #   - ./certs:/etc/nginx/certs:ro
+    networks:
+      - fosst-net
+
+networks:
+  fosst-net:
+    external: true
+    name: fosst-net

@@ -3,16 +3,16 @@ venv/
 .venv/
 env/
 ENV/
-backend/venv/
+Api/venv/
 
 # Node modules & build outputs
 node_modules/
-frontend/node_modules/
+Frontend/node_modules/
 dist/
-frontend/dist/
+Frontend/dist/
 build/
 .vite/
-frontend/vite.config.ts.timestamp-*.mjs
+Frontend/vite.config.ts.timestamp-*.mjs
 
 # Python / Django
 __pycache__/

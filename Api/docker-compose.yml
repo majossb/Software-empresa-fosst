@@ -1,0 +1,144 @@
+version: '3.8'
+
+# Infraestructura + aplicación de la API (Django + DRF + Celery)
+# Puertos host: API 8000 | Postgres 5432 | Redis 6379 | MinIO 9000/9001
+# Red compartida con el Frontend: fosst-net (para el proxy de nginx)
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: fosst_postgres
+    restart: always
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-fosst_db}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - fosst-net
+
+  minio:
+    image: minio/minio:latest
+    container_name: fosst_minio
+    restart: always
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+    ports:
+      - "${MINIO_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - fosst-net
+
+  redis:
+    image: redis:7-alpine
+    container_name: fosst_redis
+    restart: always
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    networks:
+      - fosst-net
+
+  api:
+    build: .
+    image: fosst-api:latest
+    container_name: fosst_api
+    restart: always
+    env_file: .env
+    environment:
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+      DEBUG: ${DEBUG:-True}
+      DATABASE_URL: postgres://postgres:postgres@postgres:5432/fosst_db
+      REDIS_URL: redis://redis:6379/1
+      AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-minioadmin}
+      AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
+      AWS_S3_ENDPOINT_URL: http://minio:9000
+      CORS_ALLOWED_ORIGINS: http://localhost:8080
+      CSRF_TRUSTED_ORIGINS: http://localhost:8080,http://localhost:8000
+      FRONTEND_URL: http://localhost:8080
+    command: >
+      sh -c "python manage.py migrate --noinput &&
+             python manage.py collectstatic --noinput &&
+             gunicorn config.wsgi:application --bind 0.0.0.0:8000 --workers 3"
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      minio:
+        condition: service_started
+    networks:
+      - fosst-net
+
+  worker:
+    build: .
+    image: fosst-api:latest
+    container_name: fosst_celery_worker
+    restart: always
+    env_file: .env
+    environment:
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+      DEBUG: ${DEBUG:-True}
+      DATABASE_URL: postgres://postgres:postgres@postgres:5432/fosst_db
+      REDIS_URL: redis://redis:6379/1
+      AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-minioadmin}
+      AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
+      AWS_S3_ENDPOINT_URL: http://minio:9000
+    command: celery -A config worker -l info
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    networks:
+      - fosst-net
+
+  beat:
+    build: .
+    image: fosst-api:latest
+    container_name: fosst_celery_beat
+    restart: always
+    env_file: .env
+    environment:
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+      DEBUG: ${DEBUG:-True}
+      DATABASE_URL: postgres://postgres:postgres@postgres:5432/fosst_db
+      REDIS_URL: redis://redis:6379/1
+      AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-minioadmin}
+      AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
+      AWS_S3_ENDPOINT_URL: http://minio:9000
+    command: celery -A config beat -l info
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    networks:
+      - fosst-net
+
+volumes:
+  postgres_data:
+  minio_data:
+
+networks:
+  fosst-net:
+    name: fosst-net
+    driver: bridge

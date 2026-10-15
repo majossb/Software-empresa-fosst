@@ -12,14 +12,30 @@ Plataforma organizacional y Sistema de Gestión de Seguridad y Salud en el Traba
 
 ---
 
+## Estructura del Proyecto
+
+```
+proyecto/
+├── Api/            # Backend (Django + DRF + Celery) + docker-compose (api/worker/beat + Postgres/Redis/MinIO)
+├── Frontend/       # Frontend (React + Vite) + Dockerfile (Nginx) + docker-compose
+└── Documentacion/  # Este README y CHANGELOG
+```
+
+Puertos: **8000** API · **8080** Web (frontend) · **443** HTTPS (opcional).
+
+---
+
 ## 1. Configuración del Entorno de Desarrollo Local
 
-### 1.1 Clonar el Repositorio e Iniciar Servicios (PostgreSQL, MinIO, Redis)
+### 1.1 Iniciar Servicios de la API (PostgreSQL, MinIO, Redis + API)
 
 ```bash
-# Levantar PostgreSQL 16, MinIO (S3-compatible) y Redis en contenedores
+cd Api
 docker-compose up -d
 ```
+
+Esto levanta PostgreSQL 16, MinIO (S3-compatible), Redis y los contenedores de la API
+(`api` con Gunicorn, `worker` y `beat` de Celery).
 
 Servicios levantados:
 - **PostgreSQL**: `localhost:5432` (db: `fosst_db`, user: `postgres`, pass: `postgres`)
@@ -27,12 +43,12 @@ Servicios levantados:
 - **MinIO S3 API**: `http://localhost:9000`
 - **Redis**: `localhost:6379`
 
-### 1.2 Configurar Variables de Entorno del Backend
+### 1.2 Configurar Variables de Entorno de la API
 
-Copiar `.env.example` a `.env` dentro del directorio `backend/`:
+Copiar `.env.example` a `.env` dentro del directorio `Api/`:
 
 ```bash
-cd backend
+cd Api
 cp .env.example .env
 ```
 
@@ -51,7 +67,7 @@ AWS_S3_ENDPOINT_URL=http://localhost:9000
 ## 2. Iniciar Backend (Django DRF)
 
 ```bash
-cd backend
+cd Api
 
 # Crear y activar entorno virtual
 python -m venv venv
@@ -77,7 +93,7 @@ python manage.py runserver 8000
 
 ## 3. Iniciar Celery (Tareas Asíncronas)
 
-En una terminal independiente dentro de `backend/`:
+En una terminal independiente dentro de `Api/`:
 
 ```bash
 # En Windows:
@@ -91,22 +107,30 @@ celery -A config worker -l info
 
 ## 4. Iniciar Frontend (React + TypeScript + Vite)
 
-En una terminal independiente dentro de `frontend/`:
+En una terminal independiente dentro de `Frontend/`:
 
 ```bash
-cd frontend
+cd Frontend
 npm install
 npm run dev
 ```
 
-Acceder a la aplicación en `http://localhost:5173`.
+Acceder a la aplicación en `http://localhost:5173` (modo desarrollo).
+Para levantar el frontend en contenedor con Nginx (puerto 8080):
+
+```bash
+cd Frontend
+docker-compose up -d --build
+```
+
+Acceder en `http://localhost:8080` (nginx hace proxy de `/api` hacia la API).
 
 ---
 
 ## 5. Ejecutar Suite de Pruebas Automatizadas
 
 ```bash
-cd backend
+cd Api
 python manage.py test
 ```
 
