@@ -18,9 +18,33 @@ class SuscripcionSerializer(serializers.ModelSerializer):
         fields = "__all__"
 
 
+DEFAULT_BRANDING = {
+    "preset": "azul_fosst",
+    "primario": "#002D62",
+    "secundario": "#0284C7",
+    "acento": "#F5A800",
+    "mapa_procesos": {
+        "estrategico": "#002D62",
+        "misional": "#0284C7",
+        "apoyo": "#64748B",
+        "entradas": "#F8FAFC",
+        "salidas": "#F8FAFC",
+        "fondo": "#F1F5F9",
+        "texto_entradas": "",
+        "texto_salidas": "",
+    },
+}
+
+
+def get_branding_defaults():
+    import copy
+    return copy.deepcopy(DEFAULT_BRANDING)
+
+
 class EmpresaSerializer(serializers.ModelSerializer):
     suscripciones = serializers.SerializerMethodField()
     _count = serializers.SerializerMethodField()
+    branding = serializers.SerializerMethodField()
 
     class Meta:
         model = Empresa
@@ -38,6 +62,19 @@ class EmpresaSerializer(serializers.ModelSerializer):
             "procesos": obj.procesos.filter(activo=True).count(),
             "organigrama": obj.organigrama.filter(activo=True).count(),
         }
+
+    def get_branding(self, obj):
+        if obj.branding and isinstance(obj.branding, dict):
+            defaults = get_branding_defaults()
+            # Deep merge branding onto defaults
+            for key, val in obj.branding.items():
+                if key == "mapa_procesos" and isinstance(val, dict):
+                    for sub_key, sub_val in val.items():
+                        defaults["mapa_procesos"][sub_key] = sub_val
+                else:
+                    defaults[key] = val
+            return defaults
+        return get_branding_defaults()
 
 
 class RegistroEmpresaSerializer(serializers.Serializer):

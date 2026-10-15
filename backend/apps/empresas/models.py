@@ -20,6 +20,7 @@ class Empresa(models.Model):
     sector_economico = models.CharField(max_length=150, blank=True)
     ciudad = models.CharField(max_length=100, blank=True)
     logo_url = models.CharField(max_length=500, blank=True)
+    branding = models.JSONField(null=True, blank=True)
     deleted_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

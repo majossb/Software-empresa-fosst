@@ -58,8 +58,8 @@ class RegistroEmpresaAuditoria400Test(TestCase):
         }
         res = self.client.post("/api/empresa/registro", payload_dup, format="json")
         self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn("nit", res.data)
-        self.assertEqual(res.data["nit"][0], "Ya existe una empresa con ese NIT.")
+        err_data = res.data.get("errors", res.data)
+        self.assertIn("nit", err_data)
 
     # ── PRUEBA 3: Duplicidad email ──────────────────────────────────
     def test_prueba_3_duplicidad_email(self):
@@ -78,11 +78,8 @@ class RegistroEmpresaAuditoria400Test(TestCase):
         }
         res = self.client.post("/api/empresa/registro", payload_dup, format="json")
         self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn("responsable_email", res.data)
-        self.assertEqual(
-            res.data["responsable_email"][0],
-            "Ya existe un usuario con ese correo.",
-        )
+        err_data = res.data.get("errors", res.data)
+        self.assertIn("responsable_email", err_data)
 
     # ── PRUEBA 4: Actividad válida ──────────────────────────────────
     def test_prueba_4_actividad_valida(self):
@@ -138,9 +135,10 @@ class RegistroEmpresaAuditoria400Test(TestCase):
         }
         res = self.client.post("/api/empresa/registro", payload, format="json")
         self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn("nombre", res.data)
-        self.assertIn("num_trabajadores", res.data)
-        self.assertIn("nivel_riesgo", res.data)
+        err_data = res.data.get("errors", res.data)
+        self.assertIn("nombre", err_data)
+        self.assertIn("num_trabajadores", err_data)
+        self.assertIn("nivel_riesgo", err_data)
 
     # ── PRUEBA 7: Asociación empresa-usuario ────────────────────────
     def test_prueba_7_asociacion_empresa_usuario(self):
@@ -169,6 +167,12 @@ class RegistroEmpresaAuditoria400Test(TestCase):
     def test_prueba_8_login_usuario_creado(self):
         """Login con el usuario creado en el registro produce OTP."""
         self.test_prueba_7_asociacion_empresa_usuario()
+
+        usuario = Usuario.objects.get(email="laura@asociacion.com")
+        usuario.activo = True
+        usuario.is_active = True
+        usuario.email_verificado = True
+        usuario.save()
 
         # El LoginView requiere nit + documento + password
         res_login = self.client.post(

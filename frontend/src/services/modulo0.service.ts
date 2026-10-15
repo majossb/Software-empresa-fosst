@@ -1,6 +1,27 @@
 import { apiClient } from './api.client'
 
 // ── Tipos ──────────────────────────────────────────────────────────
+export interface MapaProcesosBranding {
+  estrategico?: string | null
+  misional?: string | null
+  apoyo?: string | null
+  entradas?: string | null
+  salidas?: string | null
+  fondo?: string | null
+  texto_entradas?: string
+  texto_salidas?: string
+  entradas_items?: string[]
+  salidas_items?: string[]
+}
+
+export interface BrandingConfig {
+  preset: string
+  primario: string
+  secundario: string
+  acento: string
+  mapa_procesos?: MapaProcesosBranding
+}
+
 export interface EmpresaContexto {
   id: string
   nombre: string
@@ -20,6 +41,7 @@ export interface EmpresaContexto {
   mision: string | null
   vision: string | null
   valores: string[] | null
+  branding?: BrandingConfig
   _count: { sedes: number; procesos: number; organigrama: number }
 }
 
@@ -42,6 +64,8 @@ export interface NodoOrganigrama {
   nivel: number
   padre_id: string | null
   orden: number
+  pos_x?: number | null
+  pos_y?: number | null
   activo: boolean
 }
 
@@ -149,6 +173,8 @@ export const modulo0Service = {
   // Contexto
   getContexto: () => apiClient.get<EmpresaContexto>('/modulo0/contexto'),
   updateContexto: (data: Partial<EmpresaContexto>) => apiClient.put<EmpresaContexto>('/modulo0/contexto', data),
+  getBranding: () => apiClient.get<BrandingConfig>('/modulo0/branding'),
+  updateBranding: (data: Partial<BrandingConfig>) => apiClient.put<BrandingConfig>('/modulo0/branding', data),
   uploadLogo: (file: File) => {
     const form = new FormData()
     form.append('logo', file)
@@ -164,11 +190,12 @@ export const modulo0Service = {
 
   // Organigrama
   getOrganigrama: () => apiClient.get<NodoOrganigrama[]>('/modulo0/organigrama'),
-  createNodo: (data: { nombre_cargo: string; area?: string | null; padre_id?: string | null; orden?: number }) =>
+  createNodo: (data: { nombre_cargo: string; area?: string | null; padre_id?: string | null; orden?: number; pos_x?: number | null; pos_y?: number | null }) =>
     apiClient.post<NodoOrganigrama>('/modulo0/organigrama', data),
   updateNodo: (id: string, data: Partial<NodoOrganigrama>) =>
     apiClient.put<NodoOrganigrama>(`/modulo0/organigrama/${id}`, data),
   deleteNodo: (id: string) => apiClient.delete<void>(`/modulo0/organigrama/${id}`),
+  autoOrganizarOrganigrama: () => apiClient.post<{ message: string }>('/modulo0/organigrama/auto-organizar', {}),
 
   // Procesos
   listProcesos: () => apiClient.get<{ estrategico: Proceso[]; misional: Proceso[]; apoyo: Proceso[] }>('/modulo0/procesos'),
@@ -177,6 +204,12 @@ export const modulo0Service = {
   updateProceso: (id: string, data: Partial<Proceso>) => apiClient.put<Proceso>(`/modulo0/procesos/${id}`, data),
   deleteProceso: (id: string) => apiClient.delete<void>(`/modulo0/procesos/${id}`),
   sugerirProcesosIA: () => apiClient.post<{ procesos: ProcesoSugerido[]; fuente: string }>('/modulo0/procesos/sugerir-ia', {}),
+  importarPlantilla: (plantillaId: string) =>
+    apiClient.post<{ message: string; creados: number; existentes: number }>(
+      '/organizacion/procesos/importar-plantilla/',
+      { plantilla_id: plantillaId }
+    ),
+  limpiarDuplicadosProcesos: () => apiClient.post<{ message: string; eliminados: number }>('/modulo0/procesos/limpiar-duplicados', {}),
 
   // Identidad
   updateIdentidad: (data: { mision?: string | null; vision?: string | null; valores?: string[] | null }) =>

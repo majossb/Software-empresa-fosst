@@ -1,6 +1,7 @@
 from django.urls import path
 from .views import (
     ContextoEmpresaView,
+    BrandingEmpresaView,
     UploadLogoEmpresaView,
     ResumenCompletitudView,
     SugerirCiiuIAView,
@@ -13,6 +14,7 @@ from .views import (
 
 urlpatterns = [
     path("contexto", ContextoEmpresaView.as_view(), name="modulo0-contexto"),
+    path("branding", BrandingEmpresaView.as_view(), name="modulo0-branding"),
     path("contexto/logo", UploadLogoEmpresaView.as_view(), name="modulo0-logo"),
     path("completitud", ResumenCompletitudView.as_view(), name="modulo0-completitud"),
     path("contexto/ciiu/sugerir", SugerirCiiuIAView.as_view(), name="modulo0-ciiu-sugerir"),

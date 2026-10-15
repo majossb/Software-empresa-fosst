@@ -6,6 +6,7 @@ import {
 
 export { FOSST_ICONS } from './icons'
 export type { FosstIconName } from './icons'
+export { ExportSheet, getLogoDataUrl } from './ExportSheet'
 
 // ── KpiCard (Estructura Unificada FOSST) ──────────────────────────
 const KPI_COLORS = {
@@ -134,7 +135,7 @@ export type ButtonVariant = 'primary' | 'ghost' | 'danger' | 'secondary'
 
 const BTN_STYLES: Record<ButtonVariant, string> = {
   primary:   'bg-brand-500 hover:bg-brand-600 text-slate-950 font-bold shadow-sm shadow-amber-500/20',
-  secondary: 'bg-primary-500 hover:bg-primary-600 text-white font-bold shadow-sm',
+  secondary: 'bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 font-bold shadow-sm',
   ghost:     'bg-white hover:bg-slate-100 text-primary-500 border border-slate-200 font-semibold',
   danger:    'bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-semibold',
 }

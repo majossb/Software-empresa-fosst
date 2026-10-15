@@ -4,7 +4,8 @@ import { modulo0Service, EmpresaContexto } from '@/services/modulo0.service'
 import { resolveMediaUrl } from '@/services/api.client'
 import { Card, Button, Badge } from '@/components/ui'
 import { FormField, Input, Select, LoadingSpinner, ErrorDisplay } from '@/components/ui/forms'
-import { Camera, Check, Loader2, AlertCircle, Building2, Sparkles, BookOpen, X, Cpu, ImageOff, ShieldAlert, ArrowRight } from 'lucide-react'
+import { Camera, Check, Loader2, AlertCircle, Building2, Sparkles, BookOpen, X, Cpu, ImageOff, ShieldAlert, ArrowRight, Palette } from 'lucide-react'
+import { BrandPaletteDialog } from '@/components/ui/BrandPaletteDialog'
 
 
 type SaveStatus = 'idle' | 'saving' | 'saved' | 'error'
@@ -62,6 +63,9 @@ export default function EmpresaContextoView() {
   const [descResult, setDescResult] = useState<any>(null)
   const [isDescPending, setIsDescPending] = useState(false)
   const [descError, setDescError] = useState('')
+
+  // Estado para Modal de Identidad Visual / Paleta
+  const [paletteModalOpen, setPaletteModalOpen] = useState(false)
 
   // Estados para Logo
   const [logoPreviewUrl, setLogoPreviewUrl] = useState<string | null>(null)
@@ -445,7 +449,35 @@ export default function EmpresaContextoView() {
             </div>
           </div>
         </div>
+
+        {/* Sección Identidad Visual de la Empresa */}
+        <div className="w-full mt-4 pt-4 border-t border-slate-100 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <div className="flex items-center -space-x-1">
+              <span className="w-4 h-4 rounded-full border border-black/10 shadow-xs block" style={{ backgroundColor: empresa?.branding?.primario || '#002D62' }} title="Primario" />
+              <span className="w-4 h-4 rounded-full border border-black/10 shadow-xs block" style={{ backgroundColor: empresa?.branding?.secundario || '#0284C7' }} title="Secundario" />
+              <span className="w-4 h-4 rounded-full border border-black/10 shadow-xs block" style={{ backgroundColor: empresa?.branding?.acento || '#F5A800' }} title="Acento" />
+            </div>
+            <span className="text-xs font-bold text-slate-700">Identidad Visual Corporativa</span>
+            <span className="text-[10px] text-slate-400 font-medium">({empresa?.branding?.preset || 'Azul FOSST'})</span>
+          </div>
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={() => setPaletteModalOpen(true)}
+            className="text-xs py-1.5 px-3.5 flex items-center gap-1.5"
+          >
+            <Palette className="w-3.5 h-3.5 text-brand-500" />
+            Personalizar Colores de Marca
+          </Button>
+        </div>
       </Card>
+
+      <BrandPaletteDialog
+        isOpen={paletteModalOpen}
+        onClose={() => setPaletteModalOpen(false)}
+        logoUrl={empresa?.logo_url}
+      />
 
       {/* Datos CIIU y clasificación */}
       <Card

@@ -2,6 +2,59 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ── Valores por defecto FOSST V.I.D.A. (RGB Channels) ── */
+:root {
+  /* Primary (#002D62) */
+  --color-primary-50: 230 240 250;
+  --color-primary-100: 184 213 245;
+  --color-primary-200: 133 181 237;
+  --color-primary-300: 82 148 229;
+  --color-primary-400: 38 119 221;
+  --color-primary-500: 0 45 98;
+  --color-primary-600: 0 36 78;
+  --color-primary-700: 0 27 59;
+  --color-primary-800: 0 18 39;
+  --color-primary-900: 0 9 20;
+  --color-primary-hex: #002D62;
+
+  /* Brand / Accent (#F5A800) */
+  --color-brand-50: 255 248 230;
+  --color-brand-100: 255 237 179;
+  --color-brand-200: 255 225 128;
+  --color-brand-300: 255 213 77;
+  --color-brand-400: 255 204 38;
+  --color-brand-500: 245 168 0;
+  --color-brand-600: 219 150 0;
+  --color-brand-700: 194 133 0;
+  --color-brand-800: 168 115 0;
+  --color-brand-900: 122 84 0;
+  --color-brand-hex: #F5A800;
+
+  /* Secondary (#0284C7) */
+  --color-secondary-50: 240 249 255;
+  --color-secondary-100: 224 242 254;
+  --color-secondary-200: 186 230 253;
+  --color-secondary-300: 125 211 252;
+  --color-secondary-400: 56 189 248;
+  --color-secondary-500: 2 132 199;
+  --color-secondary-600: 3 105 161;
+  --color-secondary-700: 7 89 133;
+  --color-secondary-800: 12 74 110;
+  --color-secondary-900: 12 59 90;
+  --color-secondary-hex: #0284C7;
+
+  /* Mapa de procesos defaults */
+  --mapa-estrategico-hex: #002D62;
+  --mapa-misional-hex: #0284C7;
+  --mapa-apoyo-hex: #64748B;
+  --mapa-entradas-hex: #F8FAFC;
+  --mapa-salidas-hex: #F8FAFC;
+  --mapa-fondo-hex: #F1F5F9;
+  --mapa-estrategico-rgb: 0 45 98;
+  --mapa-misional-rgb: 2 132 199;
+  --mapa-apoyo-rgb: 100 116 139;
+}
+
 /* ── Base reset ── */
 html, body, #root {
   min-height: 100vh;
@@ -22,7 +75,7 @@ body {
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: #F4F5F7; }
 ::-webkit-scrollbar-thumb { background: #C5CDD8; border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: #F5A800; }
+::-webkit-scrollbar-thumb:hover { background: var(--color-brand-hex); }
 
 /* ── Partículas del login (CSS puro) ── */
 @keyframes particle-float {
@@ -36,15 +89,15 @@ body {
   position: absolute;
   border-radius: 9999px;
   pointer-events: none;
-  background: rgba(245,168,0,0.2);
+  background: rgba(var(--color-brand-500) / 0.2);
   animation: particle-float linear infinite;
 }
 
 /* ── Sidebar nav active state ── */
 .nav-item-active {
-  background: rgba(245,168,0,0.12);
-  color: #1A3A6B;
-  border-left: 2px solid #F5A800;
+  background: rgba(var(--color-brand-500) / 0.12);
+  color: var(--color-primary-hex);
+  border-left: 2px solid var(--color-brand-hex);
 }
 
 /* ── Transición de vistas ── */

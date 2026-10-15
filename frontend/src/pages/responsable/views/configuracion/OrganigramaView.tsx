@@ -1,141 +1,187 @@
-import { useState, useRef, useEffect, useCallback } from 'react'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { modulo0Service, NodoOrganigrama } from '@/services/modulo0.service'
-import { Card, Button } from '@/components/ui'
-import { FormField, Input, LoadingSpinner, ErrorDisplay } from '@/components/ui/forms'
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { modulo0Service, NodoOrganigrama } from '@/services/modulo0.service';
+import { Button, getLogoDataUrl } from '@/components/ui';
+import { FormField, Input, LoadingSpinner, ErrorDisplay } from '@/components/ui/forms';
+import { useBranding } from '@/store/branding.context';
+import { hexToHsl, hslToRgb, rgbToHex } from '@/utils/color.utils';
+import { hierarchy, tree } from 'd3-hierarchy';
 import {
   GitBranch, Plus, Trash2, Edit2, ZoomIn, ZoomOut, RotateCcw,
-  Printer, ChevronDown, ChevronRight, X, AlertTriangle, Users, Briefcase,
-  ShieldCheck, Loader2
-} from 'lucide-react'
+  Printer, ChevronDown, ChevronRight, ChevronUp, ChevronLeft,
+  X, AlertTriangle, ShieldCheck, Loader2,
+  Maximize2, Palette, Columns, Rows, Minimize2
+} from 'lucide-react';
 
-interface TreeNode extends NodoOrganigrama {
-  children: TreeNode[]
+// --- Types & Interfaces ---
+
+type Orientation = 'vertical' | 'horizontal';
+type ColorMode = 'area' | 'nivel' | 'monocromo';
+
+interface Point {
+  x: number;
+  y: number;
 }
 
-const customStyles = `
-  .organigrama-canvas {
-    background-color: #f8fafc;
-    background-image: radial-gradient(#e2e8f0 1.5px, transparent 1.5px);
-    background-size: 24px 24px;
+interface NodeWithPos extends NodoOrganigrama {
+  _x: number;
+  _y: number;
+  _isHanging?: boolean;
+  _collapsed?: boolean;
+  children?: NodeWithPos[];
+}
+
+interface TreeNode {
+  data: NodeWithPos;
+  x: number;
+  y: number;
+  parent: TreeNode | null;
+  children?: TreeNode[];
+  _isHangingLeaf?: boolean;
+}
+
+// --- Utils ---
+
+const generateAreaColors = (areas: string[], branding: any) => {
+  const baseHsl = hexToHsl(branding?.primario || '#002D62');
+  const colors: Record<string, string> = {};
+  
+  areas.forEach((area, i) => {
+    const hue = (baseHsl.h + (i * 360 / Math.max(areas.length, 1))) % 360;
+    const rgb = hslToRgb(hue, 60, 50);
+    colors[area] = rgbToHex(rgb.r, rgb.g, rgb.b);
+  });
+  return colors;
+};
+
+const getLevelColor = (level: number, branding: any) => {
+  if (level === 1) return branding?.primario || '#002D62';
+  if (level === 2) return branding?.secundario || '#0284C7';
+  if (level === 3) return branding?.acento || '#F5A800';
+  
+  const baseHsl = hexToHsl(branding?.primario || '#002D62');
+  const rgb = hslToRgb(
+    baseHsl.h,
+    Math.max(10, baseHsl.s - (level * 10)),
+    Math.min(85, baseHsl.l + (level * 10))
+  );
+  return rgbToHex(rgb.r, rgb.g, rgb.b);
+};
+
+const getMonochromeColor = () => '#94a3b8'; // slate-400
+
+const generatePath = (source: Point, target: Point, orientation: Orientation, isHangingTarget: boolean = false) => {
+  const radius = 8;
+  if (orientation === 'vertical') {
+    if (isHangingTarget) {
+      const midY = source.y + 30;
+      return `M ${source.x} ${source.y}
+              L ${source.x} ${midY - radius}
+              Q ${source.x} ${midY} ${source.x > target.x ? source.x - radius : source.x + radius} ${midY}
+              L ${target.x < source.x ? target.x + radius : target.x - radius} ${midY}
+              Q ${target.x} ${midY} ${target.x} ${midY + radius}
+              L ${target.x} ${target.y}`;
+    }
+
+    const midY = source.y + (target.y - source.y) / 2;
+    return `M ${source.x} ${source.y}
+            L ${source.x} ${midY - radius}
+            Q ${source.x} ${midY} ${source.x < target.x ? source.x + radius : source.x - radius} ${midY}
+            L ${target.x < source.x ? target.x + radius : target.x - radius} ${midY}
+            Q ${target.x} ${midY} ${target.x} ${midY + radius}
+            L ${target.x} ${target.y}`;
+  } else {
+    if (isHangingTarget) {
+      const midX = source.x + 30;
+      return `M ${source.x} ${source.y}
+              L ${midX - radius} ${source.y}
+              Q ${midX} ${source.y} ${midX} ${source.y > target.y ? source.y - radius : source.y + radius}
+              L ${midX} ${target.y < source.y ? target.y + radius : target.y - radius}
+              Q ${midX} ${target.y} ${midX + radius} ${target.y}
+              L ${target.x} ${target.y}`;
+    }
+
+    const midX = source.x + (target.x - source.x) / 2;
+    return `M ${source.x} ${source.y}
+            L ${midX - radius} ${source.y}
+            Q ${midX} ${source.y} ${midX} ${source.y < target.y ? source.y - radius : source.y + radius}
+            L ${midX} ${target.y < source.y ? target.y + radius : target.y - radius}
+            Q ${midX} ${target.y} ${midX + radius} ${target.y}
+            L ${target.x} ${target.y}`;
   }
-  .node-card {
-    transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s ease, border-color 0.2s ease;
-  }
-  .node-card:hover {
-    transform: translateY(-4px);
-  }
-  @media print {
-    body {
-      background: white !important;
-      color: black !important;
-    }
-    #organigrama-root-view {
-      border: none !important;
-      background: white !important;
-    }
-    .no-print {
-      display: none !important;
-    }
-    .organigrama-viewport-container {
-      position: absolute !important;
-      left: 0 !important;
-      top: 0 !important;
-      width: 100% !important;
-      height: 100% !important;
-      overflow: visible !important;
-      background: white !important;
-    }
-    .organigrama-canvas {
-      transform: none !important;
-      background: none !important;
-      position: relative !important;
-      width: 100% !important;
-      height: 100% !important;
-    }
-    .node-card {
-      background: white !important;
-      color: black !important;
-      border: 1px solid #cbd5e1 !important;
-      box-shadow: none !important;
-      transform: none !important;
-    }
-    .node-card * {
-      color: black !important;
-    }
-    .svg-connector-path {
-      stroke: #94a3b8 !important;
-      stroke-width: 2px !important;
-    }
-  }
-`
+};
+
+// --- Main Component ---
 
 export default function OrganigramaView() {
-  const queryClient = useQueryClient()
-  const containerRef = useRef<HTMLDivElement>(null)
+  const queryClient = useQueryClient();
+  const { branding } = useBranding();
   
-  // Modal states
-  const [modalOpen, setModalOpen] = useState(false)
-  const [editingNodo, setEditingNodo] = useState<NodoOrganigrama | null>(null)
-  const [nombreCargo, setNombreCargo] = useState('')
-  const [area, setArea] = useState('')
-  const [padreId, setPadreId] = useState<string>('')
-  const [orden, setOrden] = useState(0)
-  const [errorMsg, setErrorMsg] = useState('')
+  // State
+  const [orientation, setOrientation] = useState<Orientation>('vertical');
+  const [colorMode, setColorMode] = useState<ColorMode>('area');
+  const [collapsedNodes, setCollapsedNodes] = useState<Set<string>>(new Set());
+  const [zoom, setZoom] = useState(1);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [isDraggingCanvas, setIsDraggingCanvas] = useState(false);
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  
+  // Node Dragging State
+  const [draggingNode, setDraggingNode] = useState<string | null>(null);
+  const [nodeDragStart, setNodeDragStart] = useState<{ x: number, y: number } | null>(null);
+  const [nodeOffset, setNodeOffset] = useState<{ x: number, y: number } | null>(null);
+  const [tempNodePositions, setTempNodePositions] = useState<Record<string, Point>>({});
+  
+  // Modal State
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [modalMode, setModalMode] = useState<'create' | 'edit'>('create');
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [formData, setFormData] = useState<Partial<NodoOrganigrama>>({});
 
-  // Viewport states
-  const [zoom, setZoom] = useState(1)
-  const [pan, setPan] = useState({ x: 0, y: 0 })
-  const [collapsedNodes, setCollapsedNodes] = useState<Record<string, boolean>>({})
-  const [positions, setPositions] = useState<Record<string, { x: number; y: number }>>({})
+  // Confirm Auto Organize State
+  const [showAutoConfirm, setShowAutoConfirm] = useState(false);
+  
+  const containerRef = useRef<HTMLDivElement>(null);
+  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Interactive states
-  const [inlineEditingId, setInlineEditingId] = useState<string | null>(null)
-  const [inlineEditValue, setInlineEditValue] = useState('')
+  // Queries
+  const { data: nodes = [], isLoading, isError } = useQuery({
+    queryKey: ['organigrama'],
+    queryFn: modulo0Service.getOrganigrama
+  });
 
-  // Refs for tracking drag/pan states globally
-  const isDraggingNodeRef = useRef(false)
-  const draggedNodeIdRef = useRef<string | null>(null)
-  const dragStartPosRef = useRef({ x: 0, y: 0 })
-  const initialNodePosRef = useRef({ x: 0, y: 0 })
-
-  const isPanningRef = useRef(false)
-  const panStartPosRef = useRef({ x: 0, y: 0 })
-  const initialPanRef = useRef({ x: 0, y: 0 })
-
-  const zoomRef = useRef(zoom)
-  useEffect(() => {
-    zoomRef.current = zoom
-  }, [zoom])
-
-  const { data: nodos, isLoading, error, refetch } = useQuery({
-    queryKey: ['modulo0', 'organigrama'],
-    queryFn: modulo0Service.getOrganigrama,
-  })
-
-  const createMutation = useMutation({
-    mutationFn: modulo0Service.createNodo,
-    onSuccess: () => { 
-      queryClient.invalidateQueries({ queryKey: ['modulo0'] })
-      closeModal() 
-    },
-    onError: (err: any) => { setErrorMsg(err.message || 'Error al agregar cargo.') }
-  })
-
-  const updateMutation = useMutation({
+  // Mutations
+  const updateNodeMutation = useMutation({
     mutationFn: ({ id, data }: { id: string; data: Partial<NodoOrganigrama> }) => modulo0Service.updateNodo(id, data),
-    onSuccess: () => { 
-      queryClient.invalidateQueries({ queryKey: ['modulo0'] })
-      closeModal() 
-    },
-    onError: (err: any) => { setErrorMsg(err.message || 'Error al actualizar cargo.') }
-  })
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['organigrama'] });
+    }
+  });
 
-  const deleteMutation = useMutation({
+  const createNodeMutation = useMutation({
+    mutationFn: modulo0Service.createNodo,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['organigrama'] });
+      setIsModalOpen(false);
+    }
+  });
+
+  const deleteNodeMutation = useMutation({
     mutationFn: modulo0Service.deleteNodo,
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['modulo0'] }) },
-    onError: (err: any) => { alert(err.message || 'No se puede eliminar: el cargo posee subordinados directos.') }
-  })
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['organigrama'] });
+    }
+  });
+
+  const autoOrganizeMutation = useMutation({
+    mutationFn: modulo0Service.autoOrganizarOrganigrama,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['organigrama'] });
+      setShowAutoConfirm(false);
+      setTimeout(() => fitToScreen(), 120);
+    }
+  });
 
   const importBaseOrgMutation = useMutation({
     mutationFn: async () => {
@@ -144,1083 +190,948 @@ export default function OrganigramaView() {
         area: 'Dirección General',
         padre_id: null,
         orden: 0
-      })
+      });
       const respSST = await modulo0Service.createNodo({
         nombre_cargo: 'Responsable del SG-SST',
         area: 'Seguridad y Salud en el Trabajo',
         padre_id: gerencia.id,
         orden: 0
-      })
+      });
       await modulo0Service.createNodo({
         nombre_cargo: 'COPASST / Vigía de SST',
         area: 'Comités Paritarios',
         padre_id: gerencia.id,
         orden: 1
-      })
+      });
       await modulo0Service.createNodo({
         nombre_cargo: 'Comité de Convivencia Laboral',
         area: 'Comités Especiales',
         padre_id: gerencia.id,
         orden: 2
-      })
+      });
       const operaciones = await modulo0Service.createNodo({
         nombre_cargo: 'Dirección / Jefatura de Operaciones',
         area: 'Operaciones',
         padre_id: gerencia.id,
         orden: 3
-      })
+      });
       await modulo0Service.createNodo({
         nombre_cargo: 'Brigada de Emergencias y Primeros Auxilios',
         area: 'Seguridad y Salud en el Trabajo',
         padre_id: respSST.id,
         orden: 0
-      })
+      });
       await modulo0Service.createNodo({
         nombre_cargo: 'Supervisores de Campo y Operaciones',
         area: 'Operaciones',
         padre_id: operaciones.id,
         orden: 0
-      })
+      });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['modulo0'] })
+      queryClient.invalidateQueries({ queryKey: ['organigrama'] });
+      queryClient.invalidateQueries({ queryKey: ['modulo0'] });
+      setTimeout(() => fitToScreen(), 150);
     }
-  })
+  });
 
-  const buildTree = (flatList: NodoOrganigrama[]): TreeNode[] => {
-    const map = new Map<string, TreeNode>()
-    const roots: TreeNode[] = []
-    flatList.forEach((nodo) => { map.set(nodo.id, { ...nodo, children: [] }) })
-    flatList.forEach((nodo) => {
-      const node = map.get(nodo.id)!
-      if (nodo.padre_id && map.has(nodo.padre_id)) { map.get(nodo.padre_id)!.children.push(node) }
-      else { roots.push(node) }
-    })
-    map.forEach((node) => { node.children.sort((a, b) => a.orden - b.orden) })
-    return roots.sort((a, b) => a.orden - b.orden)
-  }
+  // Tree computation
+  const { layoutNodes, areas } = useMemo(() => {
+    if (!nodes.length) return { layoutNodes: [], areas: [] };
 
-  // Get hierarchical level of a node
-  const getNodeLevel = useCallback((id: string): number => {
-    if (!nodos) return 1
-    const map = new Map<string, NodoOrganigrama>()
-    nodos.forEach(n => map.set(n.id, n))
-    
-    let level = 1
-    let current = map.get(id)
-    while (current && current.padre_id && map.has(current.padre_id)) {
-      level++
-      current = map.get(current.padre_id)
-    }
-    return level
-  }, [nodos])
+    const areasList = Array.from(new Set(nodes.map(n => n.area).filter(Boolean))) as string[];
 
-  // Get color styles based on node level (used on light theme card borders and badges)
-  const getLevelColors = (level: number) => {
-    switch(level) {
-      case 1:
-        return {
-          badge: 'bg-amber-50 text-amber-600 border border-amber-200/60',
-          accent: 'bg-amber-500',
-          glow: 'hover:shadow-[0_0_15px_rgba(245,158,11,0.08)]'
-        }
-      case 2:
-        return {
-          badge: 'bg-blue-50 text-blue-600 border border-blue-200/60',
-          accent: 'bg-blue-500',
-          glow: 'hover:shadow-[0_0_15px_rgba(59,130,246,0.08)]'
-        }
-      case 3:
-        return {
-          badge: 'bg-emerald-50 text-emerald-600 border border-emerald-200/60',
-          accent: 'bg-emerald-500',
-          glow: 'hover:shadow-[0_0_15px_rgba(16,185,129,0.08)]'
-        }
-      default:
-        return {
-          badge: 'bg-slate-100 text-slate-700 border border-slate-200',
-          accent: 'bg-slate-600',
-          glow: 'hover:shadow-[0_0_15px_rgba(139,92,246,0.08)]'
-        }
-    }
-  }
+    const nodeMap = new Map<string, NodeWithPos>();
+    nodes.forEach(n => {
+      nodeMap.set(n.id, { ...n, _x: 0, _y: 0 });
+    });
 
-  // Calculate layout of positions recursively
-  const calculateAutoPositions = useCallback((flatList: NodoOrganigrama[]): Record<string, { x: number; y: number }> => {
-    const newPositions: Record<string, { x: number; y: number }> = {}
-    if (flatList.length === 0) return newPositions
+    const roots: NodeWithPos[] = [];
+    const sortedNodes = [...nodes].sort((a, b) => a.orden - b.orden);
 
-    const map = new Map<string, NodoOrganigrama & { children: string[] }>()
-    flatList.forEach(n => map.set(n.id, { ...n, children: [] }))
-    
-    const roots: string[] = []
-    flatList.forEach(n => {
-      if (n.padre_id && map.has(n.padre_id)) {
-        map.get(n.padre_id)!.children.push(n.id)
+    sortedNodes.forEach(n => {
+      const node = nodeMap.get(n.id)!;
+      if (node.padre_id && nodeMap.has(node.padre_id)) {
+        const parent = nodeMap.get(node.padre_id)!;
+        if (!parent.children) parent.children = [];
+        parent.children.push(node);
       } else {
-        roots.push(n.id)
+        roots.push(node);
       }
-    })
+    });
 
-    map.forEach(n => {
-      n.children.sort((a, b) => {
-        const nodeA = map.get(a)
-        const nodeB = map.get(b)
-        return (nodeA?.orden || 0) - (nodeB?.orden || 0)
-      })
-    })
+    if (roots.length === 0) return { layoutNodes: [], areas: areasList };
 
-    const HORIZONTAL_GAP = 260
-    const VERTICAL_GAP = 160
-    const nextXAtLevel: Record<number, number> = {}
+    let d3Root;
+    if (roots.length === 1) {
+      d3Root = hierarchy(roots[0]);
+    } else {
+      d3Root = hierarchy({ id: 'dummy', nombre_cargo: 'Root', children: roots } as any);
+    }
 
-    const layoutNode = (id: string, depth: number): number => {
-      const node = map.get(id)
-      if (!node) return 0
+    // Collapse
+    d3Root.each(d => {
+      const n = d.data as NodeWithPos;
+      if (collapsedNodes.has(n.id)) {
+        if (d.children) {
+          (d as any)._children = d.children;
+          d.children = undefined;
+        }
+      }
+    });
 
-      const level = depth + 1
-      const y = depth * VERTICAL_GAP + 60
+    // Hanging nodes detection
+    d3Root.each(d => {
+      if (d.children && d.children.length > 4) {
+        const allLeaves = d.children.every(c => !c.children || c.children.length === 0);
+        if (allLeaves) {
+          (d.data as NodeWithPos)._isHanging = true;
+          d.children.forEach(c => {
+            (c as any)._isHangingLeaf = true;
+          });
+        }
+      }
+    });
 
-      let x = 0
-      if (node.children.length === 0) {
-        const currentNextX = nextXAtLevel[level] || 100
-        x = currentNextX
-        nextXAtLevel[level] = currentNextX + HORIZONTAL_GAP
-      } else {
-        const childXs = node.children.map(childId => layoutNode(childId, depth + 1))
-        const childrenCenter = (childXs[0] + childXs[childXs.length - 1]) / 2
-        const currentNextX = nextXAtLevel[level] || 100
+    const nodeSize: [number, number] = orientation === 'vertical' ? [300, 180] : [320, 150];
+    const treeLayout = tree<NodeWithPos>().nodeSize(nodeSize);
+    
+    treeLayout.separation((a, b) => {
+      if ((a as any)._isHangingLeaf || (b as any)._isHangingLeaf) {
+        return 0.5;
+      }
+      return a.parent === b.parent ? 1 : 1.2;
+    });
 
-        if (childrenCenter < currentNextX) {
-          const shift = currentNextX - childrenCenter
-          const shiftSubtree = (nodeId: string) => {
-            if (newPositions[nodeId]) {
-              newPositions[nodeId].x += shift
-            }
-            const n = map.get(nodeId)
-            if (n) n.children.forEach(shiftSubtree)
-          }
-          node.children.forEach(shiftSubtree)
-          
-          for (let l = level + 1; l < 20; l++) {
-            if (nextXAtLevel[l] !== undefined) {
-              nextXAtLevel[l] += shift
-            }
-          }
-          x = currentNextX
-          nextXAtLevel[level] = currentNextX + HORIZONTAL_GAP
+    treeLayout(d3Root);
+
+    const layoutNodesList: TreeNode[] = [];
+    
+    d3Root.each((d: any) => {
+      if (d.data.id === 'dummy') return;
+
+      const nData = d.data as NodeWithPos;
+      const isHangingLeaf = !!d._isHangingLeaf;
+      
+      let finalX: number = orientation === 'vertical' ? (d.x ?? 0) : (d.y ?? 0);
+      let finalY: number = orientation === 'vertical' ? (d.y ?? 0) : (d.x ?? 0);
+
+      if (isHangingLeaf && d.parent) {
+        const pX: number = orientation === 'vertical' ? (d.parent.x ?? 0) : (d.parent.y ?? 0);
+        const pY: number = orientation === 'vertical' ? (d.parent.y ?? 0) : (d.parent.x ?? 0);
+        const childIndex = d.parent.children ? d.parent.children.indexOf(d) : 0;
+        
+        if (orientation === 'vertical') {
+           finalX = pX;
+           finalY = pY + 140 + (childIndex * 110);
         } else {
-          x = childrenCenter
-          nextXAtLevel[level] = Math.max(nextXAtLevel[level] || 100, x + HORIZONTAL_GAP)
+           finalX = pX + 280 + (childIndex * 220);
+           finalY = pY;
         }
       }
 
-      newPositions[id] = { x, y }
-      return x
-    }
+      // DB overrides
+      if (nData.pos_x !== null && nData.pos_x !== undefined) finalX = nData.pos_x;
+      if (nData.pos_y !== null && nData.pos_y !== undefined) finalY = nData.pos_y;
 
-    roots.sort((a, b) => (map.get(a)?.orden || 0) - (map.get(b)?.orden || 0))
-    roots.forEach(rootId => layoutNode(rootId, 0))
-
-    return newPositions
-  }, [])
-
-  // Auto-fit to screen function
-  const fitToScreen = useCallback((currentPositions = positions) => {
-    if (!nodos || nodos.length === 0 || Object.keys(currentPositions).length === 0) return
-    const container = containerRef.current
-    if (!container) return
-
-    const containerWidth = container.clientWidth || 800
-    const containerHeight = container.clientHeight || 500
-
-    let minX = Infinity, maxX = -Infinity
-    let minY = Infinity, maxY = -Infinity
-
-    nodos.forEach(nodo => {
-      const pos = currentPositions[nodo.id] || { x: 0, y: 0 }
-      if (pos.x < minX) minX = pos.x
-      if (pos.x > maxX) maxX = pos.x
-      if (pos.y < minY) minY = pos.y
-      if (pos.y > maxY) maxY = pos.y
-    })
-
-    const cardWidth = 220
-    const cardHeight = 88
-
-    const contentWidth = (maxX - minX) + cardWidth
-    const contentHeight = (maxY - minY) + cardHeight
-
-    const padding = 50
-    const scaleX = (containerWidth - padding * 2) / contentWidth
-    const scaleY = (containerHeight - padding * 2) / contentHeight
-    let newZoom = Math.min(scaleX, scaleY)
-    
-    newZoom = Math.max(0.35, Math.min(1.2, newZoom))
-
-    const centerX = (containerWidth - contentWidth * newZoom) / 2 - minX * newZoom
-    const centerY = (containerHeight - contentHeight * newZoom) / 2 - minY * newZoom
-
-    setZoom(newZoom)
-    setPan({ x: centerX, y: centerY })
-  }, [nodos, positions])
-
-  const hasLoadedRef = useRef(false)
-  useEffect(() => {
-    if (nodos && nodos.length > 0 && !hasLoadedRef.current) {
-      hasLoadedRef.current = true
-      const stored = localStorage.getItem('organigrama_positions')
-      let initialPositions: Record<string, { x: number; y: number }> = {}
-      if (stored) {
-        try {
-          initialPositions = JSON.parse(stored)
-        } catch (e) {
-          console.error(e)
-        }
+      // Dragging overrides
+      if (tempNodePositions[nData.id]) {
+        finalX = tempNodePositions[nData.id].x;
+        finalY = tempNodePositions[nData.id].y;
       }
 
-      const hasMissingPositions = nodos.some(n => !initialPositions[n.id])
-      if (hasMissingPositions) {
-        initialPositions = calculateAutoPositions(nodos)
-        localStorage.setItem('organigrama_positions', JSON.stringify(initialPositions))
-      }
+      const parentNode = d.parent && d.parent.data.id !== 'dummy' ? {
+        data: d.parent.data as NodeWithPos,
+        x: (orientation === 'vertical' ? d.parent.x : d.parent.y) ?? 0,
+        y: (orientation === 'vertical' ? d.parent.y : d.parent.x) ?? 0,
+        parent: null
+      } : null;
 
-      setPositions(initialPositions)
-      
-      setTimeout(() => {
-        fitToScreen(initialPositions)
-      }, 100)
+      layoutNodesList.push({
+        data: { ...nData, _x: finalX, _y: finalY },
+        x: finalX,
+        y: finalY,
+        parent: parentNode,
+        _isHangingLeaf: isHangingLeaf
+      });
+    });
+
+    return { layoutNodes: layoutNodesList, areas: areasList };
+  }, [nodes, collapsedNodes, orientation, tempNodePositions]);
+
+  // Color logic
+  const areaColors = useMemo(() => generateAreaColors(areas, branding), [areas, branding]);
+
+  const getNodeColor = useCallback((node: NodeWithPos) => {
+    switch (colorMode) {
+      case 'area':
+        return node.area && areaColors[node.area] ? areaColors[node.area] : getMonochromeColor();
+      case 'nivel':
+        return getLevelColor(node.nivel, branding);
+      case 'monocromo':
+      default:
+        return getMonochromeColor();
     }
-  }, [nodos, calculateAutoPositions, fitToScreen])
+  }, [colorMode, areaColors, branding]);
 
-  const handleWheel = (e: React.WheelEvent<HTMLDivElement>) => {
-    e.preventDefault()
-    const zoomFactor = 1.08
-    const nextZoom = e.deltaY < 0 ? zoom * zoomFactor : zoom / zoomFactor
-    const clampedZoom = Math.min(2.5, Math.max(0.25, nextZoom))
+  // Viewport interactions
+  const handleWheel = (e: React.WheelEvent) => {
+    if (e.deltaY === 0) return;
+    const zoomSensitivity = 0.001;
+    const delta = -e.deltaY * zoomSensitivity;
+    let newZoom = zoom * (1 + delta);
+    newZoom = Math.max(0.15, Math.min(newZoom, 2.5));
     
-    const rect = e.currentTarget.getBoundingClientRect()
-    const mouseX = e.clientX - rect.left
-    const mouseY = e.clientY - rect.top
-    
-    const canvasMouseX = (mouseX - pan.x) / zoom
-    const canvasMouseY = (mouseY - pan.y) / zoom
-    
-    const newPanX = mouseX - canvasMouseX * clampedZoom
-    const newPanY = mouseY - canvasMouseY * clampedZoom
-    
-    setZoom(clampedZoom)
-    setPan({ x: newPanX, y: newPanY })
-  }
-
-  const handleZoomIn = () => {
-    setZoom(prev => Math.min(2.5, prev + 0.1))
-  }
-  const handleZoomOut = () => {
-    setZoom(prev => Math.max(0.25, prev - 0.1))
-  }
-
-  const handleCanvasPanStart = (e: React.MouseEvent) => {
-    if (e.button !== 0) return
-    if ((e.target as HTMLElement).closest('.interactive-node-element')) return
-
-    isPanningRef.current = true
-    panStartPosRef.current = { x: e.clientX, y: e.clientY }
-    initialPanRef.current = { ...pan }
-
-    window.addEventListener('mousemove', handleCanvasPanMove)
-    window.addEventListener('mouseup', handleCanvasPanEnd)
-  }
-
-  const handleCanvasPanMove = useCallback((e: MouseEvent) => {
-    if (!isPanningRef.current) return
-    const dx = e.clientX - panStartPosRef.current.x
-    const dy = e.clientY - panStartPosRef.current.y
-    setPan({
-      x: initialPanRef.current.x + dx,
-      y: initialPanRef.current.y + dy
-    })
-  }, [])
-
-  const handleCanvasPanEnd = useCallback(() => {
-    isPanningRef.current = false
-    window.removeEventListener('mousemove', handleCanvasPanMove)
-    window.removeEventListener('mouseup', handleCanvasPanEnd)
-  }, [handleCanvasPanMove])
-
-  const handleNodeDragStart = (e: React.MouseEvent, nodeId: string) => {
-    e.stopPropagation()
-    if (e.button !== 0) return
-    if ((e.target as HTMLElement).closest('.interactive-node-element')) return
-
-    const currentPos = positions[nodeId] || { x: 0, y: 0 }
-    
-    draggedNodeIdRef.current = nodeId
-    dragStartPosRef.current = { x: e.clientX, y: e.clientY }
-    initialNodePosRef.current = { ...currentPos }
-    
-    isDraggingNodeRef.current = true
-    
-    window.addEventListener('mousemove', handleGlobalMouseMove)
-    window.addEventListener('mouseup', handleGlobalMouseUp)
-  }
-
-  const handleGlobalMouseMove = useCallback((e: MouseEvent) => {
-    if (!draggedNodeIdRef.current) return
-    
-    const dx = e.clientX - dragStartPosRef.current.x
-    const dy = e.clientY - dragStartPosRef.current.y
-    
-    const deltaX = dx / zoomRef.current
-    const deltaY = dy / zoomRef.current
-    
-    let newX = Math.round((initialNodePosRef.current.x + deltaX) / 10) * 10
-    let newY = Math.round((initialNodePosRef.current.y + deltaY) / 10) * 10
-    
-    setPositions(prev => ({
-      ...prev,
-      [draggedNodeIdRef.current!]: { x: newX, y: newY }
-    }))
-  }, [])
-
-  const handleGlobalMouseUp = useCallback(() => {
-    if (draggedNodeIdRef.current) {
-      setPositions(current => {
-        localStorage.setItem('organigrama_positions', JSON.stringify(current))
-        return current
-      })
+    if (containerRef.current) {
+      const rect = containerRef.current.getBoundingClientRect();
+      const mouseX = e.clientX - rect.left;
+      const mouseY = e.clientY - rect.top;
+      
+      const newPanX = mouseX - (mouseX - pan.x) * (newZoom / zoom);
+      const newPanY = mouseY - (mouseY - pan.y) * (newZoom / zoom);
+      
+      setZoom(newZoom);
+      setPan({ x: newPanX, y: newPanY });
     }
-    draggedNodeIdRef.current = null
-    isDraggingNodeRef.current = false
-    window.removeEventListener('mousemove', handleGlobalMouseMove)
-    window.removeEventListener('mouseup', handleGlobalMouseUp)
-  }, [handleGlobalMouseMove])
+  };
 
-  const handleNodeTouchStart = (e: React.TouchEvent, nodeId: string) => {
-    e.stopPropagation()
-    if ((e.target as HTMLElement).closest('.interactive-node-element')) return
+  const handleCanvasMouseDown = (e: React.MouseEvent) => {
+    if ((e.target as HTMLElement).closest('.interactive-node-element')) return;
+    if ((e.target as HTMLElement).closest('.node-card')) return;
+    
+    setIsDraggingCanvas(true);
+    setDragStart({ x: e.clientX - pan.x, y: e.clientY - pan.y });
+  };
 
-    const touch = e.touches[0]
-    const currentPos = positions[nodeId] || { x: 0, y: 0 }
-    
-    draggedNodeIdRef.current = nodeId
-    dragStartPosRef.current = { x: touch.clientX, y: touch.clientY }
-    initialNodePosRef.current = { ...currentPos }
-    
-    isDraggingNodeRef.current = true
-    
-    const handleTouchMove = (evt: TouchEvent) => {
-      const t = evt.touches[0]
-      const dx = t.clientX - dragStartPosRef.current.x
-      const dy = t.clientY - dragStartPosRef.current.y
+  const handleCanvasMouseMove = (e: React.MouseEvent) => {
+    if (isDraggingCanvas) {
+      setPan({
+        x: e.clientX - dragStart.x,
+        y: e.clientY - dragStart.y
+      });
+    } else if (draggingNode && nodeDragStart && nodeOffset) {
+      const dx = (e.clientX - nodeDragStart.x) / zoom;
+      const dy = (e.clientY - nodeDragStart.y) / zoom;
       
-      let newX = Math.round((initialNodePosRef.current.x + dx / zoomRef.current) / 10) * 10
-      let newY = Math.round((initialNodePosRef.current.y + dy / zoomRef.current) / 10) * 10
+      const rawX = nodeOffset.x + dx;
+      const rawY = nodeOffset.y + dy;
       
-      setPositions(prev => ({
+      const snappedX = Math.round(rawX / 10) * 10;
+      const snappedY = Math.round(rawY / 10) * 10;
+
+      setTempNodePositions(prev => ({
         ...prev,
-        [nodeId]: { x: newX, y: newY }
-      }))
+        [draggingNode]: { x: snappedX, y: snappedY }
+      }));
     }
+  };
+
+  const handleCanvasMouseUp = () => {
+    setIsDraggingCanvas(false);
     
-    const handleTouchEnd = () => {
-      setPositions(current => {
-        localStorage.setItem('organigrama_positions', JSON.stringify(current))
-        return current
-      })
-      draggedNodeIdRef.current = null
-      isDraggingNodeRef.current = false
-      window.removeEventListener('touchmove', handleTouchMove)
-      window.removeEventListener('touchend', handleTouchEnd)
+    if (draggingNode && tempNodePositions[draggingNode]) {
+      const pos = tempNodePositions[draggingNode];
+      const nodeId = draggingNode;
+      
+      if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+      saveTimeoutRef.current = setTimeout(() => {
+        updateNodeMutation.mutate({
+          id: nodeId,
+          data: { pos_x: pos.x, pos_y: pos.y }
+        });
+      }, 300);
+      
+      setDraggingNode(null);
+      setNodeDragStart(null);
+      setNodeOffset(null);
     }
+  };
+
+  const handleNodeMouseDown = (e: React.MouseEvent, nodeId: string, currentX: number, currentY: number) => {
+    if ((e.target as HTMLElement).closest('.interactive-node-element')) return;
+    e.stopPropagation();
     
-    window.addEventListener('touchmove', handleTouchMove, { passive: false })
-    window.addEventListener('touchend', handleTouchEnd)
-  }
+    setDraggingNode(nodeId);
+    setNodeDragStart({ x: e.clientX, y: e.clientY });
+    setNodeOffset({ x: currentX, y: currentY });
+  };
+
+  const fitToScreen = useCallback(() => {
+    if (!containerRef.current || layoutNodes.length === 0) return;
+
+    const containerWidth = containerRef.current.clientWidth;
+    const containerHeight = containerRef.current.clientHeight;
+
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    layoutNodes.forEach(n => {
+      minX = Math.min(minX, n.x);
+      minY = Math.min(minY, n.y);
+      maxX = Math.max(maxX, n.x + 260);
+      maxY = Math.max(maxY, n.y + 110);
+    });
+
+    const treeWidth = maxX - minX;
+    const treeHeight = maxY - minY;
+
+    const padding = 80;
+    const scaleX = (containerWidth - padding * 2) / (treeWidth || 1);
+    const scaleY = (containerHeight - padding * 2) / (treeHeight || 1);
+    const newZoom = Math.max(0.2, Math.min(1.1, Math.min(scaleX, scaleY)));
+
+    const newPanX = (containerWidth - treeWidth * newZoom) / 2 - minX * newZoom;
+    const newPanY = orientation === 'vertical'
+      ? Math.max(40, (containerHeight - treeHeight * newZoom) / 2) - minY * newZoom
+      : (containerHeight - treeHeight * newZoom) / 2 - minY * newZoom;
+
+    setZoom(newZoom);
+    setPan({ x: newPanX, y: newPanY });
+  }, [layoutNodes, orientation]);
 
   useEffect(() => {
-    return () => {
-      window.removeEventListener('mousemove', handleGlobalMouseMove)
-      window.removeEventListener('mouseup', handleGlobalMouseUp)
-      window.removeEventListener('mousemove', handleCanvasPanMove)
-      window.removeEventListener('mouseup', handleCanvasPanEnd)
+    if (layoutNodes.length > 0 && zoom === 1 && pan.x === 0 && pan.y === 0) {
+      fitToScreen();
     }
-  }, [handleGlobalMouseMove, handleGlobalMouseUp, handleCanvasPanMove, handleCanvasPanEnd])
+  }, [layoutNodes.length, fitToScreen, zoom, pan]);
 
-  const openAddModal = (parentSelectedId: string | null = null) => {
-    setEditingNodo(null)
-    setNombreCargo('')
-    setArea('')
-    setPadreId(parentSelectedId || '')
-    setOrden(0)
-    setErrorMsg('')
-    setModalOpen(true)
-  }
+  // Handlers
+  const handleToggleCollapse = (nodeId: string) => {
+    setCollapsedNodes(prev => {
+      const next = new Set(prev);
+      if (next.has(nodeId)) next.delete(nodeId);
+      else next.add(nodeId);
+      return next;
+    });
+  };
 
-  const openEditModal = (nodo: NodoOrganigrama) => {
-    setEditingNodo(nodo)
-    setNombreCargo(nodo.nombre_cargo)
-    setArea(nodo.area || '')
-    setPadreId(nodo.padre_id || '')
-    setOrden(nodo.orden)
-    setErrorMsg('')
-    setModalOpen(true)
-  }
+  const handleCreateChild = (parentId: string, parentNivel: number) => {
+    setModalMode('create');
+    setSelectedNodeId(null);
+    setFormData({
+      padre_id: parentId,
+      nivel: parentNivel + 1,
+      orden: 1,
+      activo: true
+    });
+    setIsModalOpen(true);
+  };
 
-  const closeModal = () => { 
-    setModalOpen(false)
-    setEditingNodo(null)
-    setErrorMsg('') 
-  }
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!nombreCargo.trim()) { setErrorMsg('El nombre del cargo es obligatorio.'); return }
-    const payload = { nombre_cargo: nombreCargo, area: area || null, padre_id: padreId || null, orden: Number(orden) || 0 }
-    if (editingNodo) { updateMutation.mutate({ id: editingNodo.id, data: payload }) }
-    else { createMutation.mutate(payload) }
-  }
+  const handleEdit = (node: NodoOrganigrama) => {
+    setModalMode('edit');
+    setSelectedNodeId(node.id);
+    setFormData(node);
+    setIsModalOpen(true);
+  };
 
   const handleDelete = (id: string) => {
-    if (confirm('¿Está seguro de que desea eliminar este cargo?')) { deleteMutation.mutate(id) }
-  }
-
-  const handleToggleCollapse = (e: React.MouseEvent, nodeId: string) => {
-    e.stopPropagation()
-    setCollapsedNodes(prev => ({
-      ...prev,
-      [nodeId]: !prev[nodeId]
-    }))
-  }
-
-  const handleAutoOrganize = () => {
-    if (!nodos || nodos.length === 0) return
-    const calculated = calculateAutoPositions(nodos)
-    setPositions(calculated)
-    localStorage.setItem('organigrama_positions', JSON.stringify(calculated))
-    setTimeout(() => {
-      fitToScreen(calculated)
-    }, 100)
-  }
-
-  const handleInlineEditStart = (e: React.MouseEvent, node: NodoOrganigrama) => {
-    e.stopPropagation()
-    setInlineEditingId(node.id)
-    setInlineEditValue(node.nombre_cargo)
-  }
-
-  const handleInlineEditSave = (nodeId: string) => {
-    if (!inlineEditValue.trim()) {
-      setInlineEditingId(null)
-      return
+    if (confirm('¿Está seguro de eliminar este cargo?')) {
+      deleteNodeMutation.mutate(id);
     }
-    const original = nodos?.find(n => n.id === nodeId)
-    if (original && original.nombre_cargo !== inlineEditValue) {
-      updateMutation.mutate({
-        id: nodeId,
-        data: {
-          nombre_cargo: inlineEditValue,
-          area: original.area,
-          padre_id: original.padre_id,
-          orden: original.orden
-        }
-      })
-    }
-    setInlineEditingId(null)
-  }
+  };
 
-  const isNodeVisible = useCallback((nodeId: string, flatList: NodoOrganigrama[]): boolean => {
-    const map = new Map<string, NodoOrganigrama>()
-    flatList.forEach(n => map.set(n.id, n))
+  const handleSaveModal = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (modalMode === 'create') {
+      createNodeMutation.mutate(formData as any);
+    } else if (selectedNodeId) {
+      updateNodeMutation.mutate({ id: selectedNodeId, data: formData });
+      setIsModalOpen(false);
+    }
+  };
+
+  const handlePrint = async () => {
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) return;
     
-    let current = map.get(nodeId)
-    while (current && current.padre_id) {
-      if (collapsedNodes[current.padre_id]) {
-        return false
-      }
-      current = map.get(current.padre_id)
-    }
-    return true
-  }, [collapsedNodes])
+    const logoDataUrl = await getLogoDataUrl((branding as any)?.logo_url);
+    const primaryColor = branding?.primario || '#002D62';
 
-  const isDescendant = (childId: string, parentId: string): boolean => {
-    if (!nodos) return false
-    const map = new Map<string, NodoOrganigrama>()
-    nodos.forEach(n => map.set(n.id, n))
-    
-    let current = map.get(childId)
-    while (current && current.padre_id) {
-      if (current.padre_id === parentId) return true
-      current = map.get(current.padre_id)
-    }
-    return false
-  }
+    const logoHtml = logoDataUrl ? `
+      <div style="width: 48px; height: 48px; border-radius: 12px; background: white; padding: 4px; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 6px rgba(0,0,0,0.15); flex-shrink: 0;">
+        <img src="${logoDataUrl}" style="max-width: 100%; max-height: 100%; object-fit: contain;" />
+      </div>
+    ` : '';
 
-  const visibleNodes = nodos ? nodos.filter(n => isNodeVisible(n.id, nodos)) : []
-  const visibleConnectors = nodos ? nodos.filter(n => {
-    if (!n.padre_id) return false
-    const parentExists = nodos.some(p => p.id === n.padre_id)
-    if (!parentExists) return false
-    return isNodeVisible(n.id, nodos) && isNodeVisible(n.padre_id, nodos)
-  }) : []
+    const nodesHtml = [...nodes].sort((a, b) => a.nivel - b.nivel).map(n => `
+      <div style="margin-left: ${(n.nivel - 1) * 20}px; margin-bottom: 8px; padding: 10px 14px; background: white; border: 1px solid #e2e8f0; border-left: 4px solid ${primaryColor}; border-radius: 10px; page-break-inside: avoid;">
+        <div style="font-size: 10px; font-weight: bold; color: #64748b; text-transform: uppercase;">${n.area || 'Sin Área'}</div>
+        <div style="font-size: 13px; font-weight: bold; color: #0f172a; margin-top: 2px;">${n.nombre_cargo}</div>
+        <div style="font-size: 10px; color: #94a3b8; margin-top: 2px;">Nivel Jerárquico: ${n.nivel} • Orden: ${n.orden}</div>
+      </div>
+    `).join('');
 
-  const hasChildren = (nodeId: string) => {
-    if (!nodos) return false
-    return nodos.some(n => n.padre_id === nodeId)
-  }
-
-  // Handle high quality printing in new landscape tab/window
-  const handlePrint = () => {
-    if (!nodos || nodos.length === 0) return
-
-    let minX = Infinity, maxX = -Infinity
-    let minY = Infinity, maxY = -Infinity
-
-    nodos.forEach(nodo => {
-      const pos = positions[nodo.id] || { x: 100, y: 100 }
-      if (pos.x < minX) minX = pos.x
-      if (pos.x > maxX) maxX = pos.x
-      if (pos.y < minY) minY = pos.y
-      if (pos.y > maxY) maxY = pos.y
-    })
-
-    const cardWidth = 220
-    const cardHeight = 88
-    const padding = 40
-
-    const width = (maxX - minX) + cardWidth
-    const height = (maxY - minY) + cardHeight
-
-    const printWindow = window.open('', '_blank')
-    if (!printWindow) {
-      alert('Por favor permite las ventanas emergentes para poder imprimir el organigrama.')
-      return
-    }
-
-    const svgConnectors = visibleConnectors.map(node => {
-      const pPos = positions[node.padre_id!] || { x: 0, y: 0 }
-      const cPos = positions[node.id] || { x: 0, y: 0 }
-      
-      const pX = pPos.x - minX + padding
-      const pY = pPos.y - minY + padding
-      const cX = cPos.x - minX + padding
-      const cY = cPos.y - minY + padding
-
-      const startX = pX + 110
-      const startY = pY + 88
-      const endX = cX + 110
-      const endY = cY - 5
-      const midY = (startY + endY) / 2
-
-      return `<path d="M ${startX} ${startY} C ${startX} ${midY}, ${endX} ${midY}, ${endX} ${endY}" fill="none" stroke="#cbd5e1" stroke-width="2" marker-end="url(#arrow)" />`
-    }).join('\n')
-
-    const nodesHtml = visibleNodes.map(node => {
-      const pos = positions[node.id] || { x: 100, y: 100 }
-      const nX = pos.x - minX + padding
-      const nY = pos.y - minY + padding
-      const lvl = getNodeLevel(node.id)
-
-      let accentColor = '#6b7280'
-      let badgeBg = '#f3f4f6'
-      let badgeText = '#374151'
-      let badgeBorder = '#e5e7eb'
-
-      if (lvl === 1) {
-        accentColor = '#f59e0b'
-        badgeBg = '#fef3c7'
-        badgeText = '#d97706'
-        badgeBorder = '#fde68a'
-      } else if (lvl === 2) {
-        accentColor = '#3b82f6'
-        badgeBg = '#dbeafe'
-        badgeText = '#2563eb'
-        badgeBorder = '#bfdbfe'
-      } else if (lvl === 3) {
-        accentColor = '#10b981'
-        badgeBg = '#d1fae5'
-        badgeText = '#059669'
-        badgeBorder = '#a7f3d0'
-      } else {
-        accentColor = '#8b5cf6'
-        badgeBg = '#f3e8ff'
-        badgeText = '#7c3aed'
-        badgeBorder = '#e9d5ff'
-      }
-
-      return `
-        <div class="node-card" style="left: ${nX}px; top: ${nY}px; border-color: ${accentColor}80;">
-          <div class="accent-stripe" style="background-color: ${accentColor};"></div>
-          <div style="display: flex; justify-content: space-between; align-items: start; margin-left: 6px;">
-            <span class="text-area">${node.area || 'Sin Área'}</span>
-            <span class="badge" style="background-color: ${badgeBg}; color: ${badgeText}; border-color: ${badgeBorder};">Nivel ${lvl}</span>
-          </div>
-          <div style="margin-left: 6px; margin-top: 4px;">
-            <div class="text-title">${node.nombre_cargo}</div>
-          </div>
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-left: 6px; margin-top: 4px;">
-            <span class="text-ord">Ord: <strong>${node.orden}</strong></span>
-          </div>
-        </div>
-      `
-    }).join('\n')
-
-    const htmlContent = `
+    const html = `
       <!DOCTYPE html>
       <html>
-      <head>
-        <title>Organigrama - Impresión</title>
-        <meta charset="utf-8" />
-        <style>
-          @page {
-            size: landscape;
-            margin: 10mm;
-          }
-          @media print {
-            body {
-              background: white !important;
-              color: black !important;
-              -webkit-print-color-adjust: exact;
-              print-color-adjust: exact;
+        <head>
+          <title>Organigrama Funcional SG-SST — Impresión</title>
+          <meta charset="utf-8" />
+          <style>
+            @page { size: portrait; margin: 10mm; }
+            body { font-family: 'Inter', system-ui, -apple-system, sans-serif; background: #f8fafc; color: #0f172a; margin: 0; padding: 16px; }
+            .header { background: ${primaryColor}; color: white; padding: 18px 22px; border-radius: 16px; display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
+            .footer { text-align: center; font-size: 10px; color: #64748b; margin-top: 24px; padding-top: 12px; border-top: 1px solid #e2e8f0; font-weight: 600; }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <div style="display: flex; align-items: center; gap: 14px;">
+              ${logoHtml}
+              <div>
+                <div style="font-size: 10px; font-weight: 800; text-transform: uppercase; opacity: 0.9; letter-spacing: 0.5px;">ORGANIGRAMA FUNCIONAL DEL SG-SST</div>
+                <div style="font-size: 16px; font-weight: 900; margin-top: 2px;">Estructura Jerárquica de Cargos</div>
+              </div>
+            </div>
+            <div style="text-align: right; font-size: 10px; opacity: 0.85;">
+              <div>Fecha: ${new Date().toLocaleDateString('es-CO')}</div>
+              <div style="font-weight: 700; margin-top: 2px;">Documento Oficial FOSST V.I.D.A.</div>
+            </div>
+          </div>
+          <div style="max-width: 900px; margin: 0 auto;">
+            ${nodesHtml}
+          </div>
+          <div class="footer">
+            FOSST V.I.D.A. — Sistema Integrado de Gestión de Seguridad y Salud en el Trabajo (ISO 45001 / Dec. 1072 de 2015)
+          </div>
+          <script>
+            window.onload = function() {
+              setTimeout(function() { window.print(); window.close(); }, 400);
             }
-          }
-          body {
-            margin: 0;
-            padding: 20px;
-            background: white;
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-          }
-          .print-canvas {
-            position: relative;
-            width: ${width + padding * 2}px;
-            height: ${height + padding * 2}px;
-            background: white;
-          }
-          .node-card {
-            position: absolute;
-            width: 220px;
-            height: 88px;
-            border-radius: 12px;
-            border: 1.5px solid #cbd5e1;
-            background: white !important;
-            padding: 12px 14px;
-            box-sizing: border-box;
-            display: flex;
-            flex-direction: column;
-            justify-content: space-between;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
-            page-break-inside: avoid;
-          }
-          .accent-stripe {
-            position: absolute;
-            top: 0;
-            left: 0;
-            bottom: 0;
-            width: 5px;
-            border-top-left-radius: 10px;
-            border-bottom-left-radius: 10px;
-          }
-          .badge {
-            font-size: 9px;
-            font-weight: bold;
-            padding: 1px 5px;
-            border-radius: 4px;
-            border-width: 1px;
-            border-style: solid;
-          }
-          .text-title {
-            font-size: 12px;
-            font-weight: bold;
-            color: #1e293b;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-          }
-          .text-area {
-            font-size: 9px;
-            font-weight: bold;
-            color: #64748b;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-          }
-          .text-ord {
-            font-size: 9px;
-            color: #64748b;
-          }
-          .text-ord strong {
-            color: #334155;
-          }
-        </style>
-      </head>
-      <body>
-        <div class="print-canvas">
-          <svg style="position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none;">
-            <defs>
-              <marker
-                id="arrow"
-                viewBox="0 0 10 10"
-                refX="8"
-                refY="5"
-                markerWidth="5"
-                markerHeight="5"
-                orient="auto-start-reverse"
-              >
-                <path d="M 0 1.5 L 8 5 L 0 8.5 z" fill="#cbd5e1" />
-              </marker>
-            </defs>
-            ${svgConnectors}
-          </svg>
-          ${nodesHtml}
-        </div>
-        <script>
-          window.onload = function() {
-            setTimeout(function() {
-              window.print();
-              window.close();
-            }, 300);
-          }
-        </script>
-      </body>
+          </script>
+        </body>
       </html>
-    `
+    `;
+    printWindow.document.write(html);
+    printWindow.document.close();
+  };
 
-    printWindow.document.open()
-    printWindow.document.write(htmlContent)
-    printWindow.document.close()
-  }
+  const getValidParents = (currentNodeId: string | null) => {
+    if (!currentNodeId) return nodes;
+    
+    const getDescendants = (id: string, all: NodoOrganigrama[]): string[] => {
+      const children = all.filter(n => n.padre_id === id).map(n => n.id);
+      let desc = [...children];
+      children.forEach(c => {
+        desc = [...desc, ...getDescendants(c, all)];
+      });
+      return desc;
+    };
 
-  if (isLoading) {
-    return <LoadingSpinner text="Cargando estructura del organigrama..." />
-  }
+    const descendants = getDescendants(currentNodeId, nodes);
+    return nodes.filter(n => n.id !== currentNodeId && !descendants.includes(n.id));
+  };
 
-  if (error) {
-    return <ErrorDisplay message={(error as any)?.message || 'No se pudo cargar el organigrama'} onRetry={refetch} />
-  }
+  if (isLoading) return <div className="p-8 flex justify-center"><LoadingSpinner text="Cargando organigrama..." /></div>;
+  if (isError) return <div className="p-8"><ErrorDisplay message="Error al cargar el organigrama" /></div>;
 
   return (
-    <div id="organigrama-root-view" className="flex flex-col h-[calc(100vh-6rem)] min-h-[500px] bg-white border border-slate-200 rounded-2xl relative overflow-hidden font-sans select-none">
-      <style>{customStyles}</style>
-
-      {/* TOOLBAR */}
-      <div className="bg-white border-b border-slate-200 px-6 py-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 z-10 no-print">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-brand-500/10 flex items-center justify-center border border-brand-500/20">
-            <GitBranch className="w-5 h-5 text-brand-500" />
+    <div
+      className={
+        isFullscreen
+          ? "fixed inset-0 z-50 bg-slate-50 flex flex-col w-screen h-screen overflow-hidden"
+          : "w-full h-[750px] min-h-[650px] flex flex-col bg-slate-50 rounded-2xl border border-slate-200 overflow-hidden shadow-xs relative"
+      }
+    >
+      {/* Toolbar en 2 zonas con flex-wrap */}
+      <div className="relative z-10 bg-white border-b border-slate-200 px-5 py-3.5 flex flex-wrap items-center justify-between gap-4 shadow-2xs">
+        {/* Zona Izquierda: Ícono + Título + Subtítulo */}
+        <div className="flex items-center gap-3 min-w-[240px]">
+          <div className="p-2.5 bg-brand-50 rounded-xl text-brand-600 border border-brand-100/60 shadow-2xs">
+            <GitBranch size={22} />
           </div>
           <div>
-            <h1 className="text-base font-bold text-slate-800 tracking-wide">Organigrama Funcional</h1>
-            <p className="text-xs text-slate-500">Diseño dinámico de la jerarquía de cargos</p>
+            <h1 className="text-base font-bold text-slate-800 leading-tight">Organigrama Funcional</h1>
+            <p className="text-xs text-slate-500">Gestión de la estructura organizacional</p>
           </div>
         </div>
-
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-xl flex items-center gap-2 text-xs font-semibold text-slate-600">
-            <Users className="w-4 h-4 text-slate-500" />
-            <span>Total: <strong className="text-slate-800">{nodos?.length || 0}</strong> cargos</span>
+        
+        {/* Zona Derecha: Contador + Selector de Color + Acciones + Botón Primario */}
+        <div className="flex flex-wrap items-center gap-3">
+          {/* Contador de Cargos */}
+          <div className="text-xs font-semibold text-slate-600 bg-slate-100 border border-slate-200/80 px-3 py-1.5 rounded-full">
+            {nodes.length} {nodes.length === 1 ? 'cargo' : 'cargos'}
           </div>
 
-          {(!nodos || nodos.length === 0) && (
-            <Button
-              variant="secondary"
-              onClick={() => importBaseOrgMutation.mutate()}
-              disabled={importBaseOrgMutation.isPending}
-              className="text-xs py-1.5 h-9 bg-primary-50 hover:bg-primary-100 border border-primary-200 text-primary-500 font-bold"
+          {/* Selector Colorear Por */}
+          <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1 text-xs">
+            <Palette size={14} className="text-slate-500 flex-shrink-0" />
+            <span className="text-[11px] font-medium text-slate-500">Color:</span>
+            <select 
+              value={colorMode}
+              onChange={(e) => setColorMode(e.target.value as ColorMode)}
+              className="bg-transparent border-none text-xs font-semibold text-slate-700 focus:ring-0 py-0.5 pl-1 pr-6 cursor-pointer"
             >
-              {importBaseOrgMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <ShieldCheck className="w-4 h-4 text-primary-500" />}
-              Cargar Estructura SG-SST
-            </Button>
-          )}
+              <option value="area">Por Área</option>
+              <option value="nivel">Por Nivel</option>
+              <option value="monocromo">Monocromo</option>
+            </select>
+          </div>
 
-          <Button variant="primary" onClick={() => openAddModal(null)} className="text-xs py-1.5 h-9">
-            <Plus className="w-4 h-4" /> Nuevo Cargo
-          </Button>
+          {/* Grupo de Acciones Secundarias (Orientación, Auto-organizar, Imprimir) */}
+          <div className="inline-flex rounded-xl border border-slate-200 bg-white p-0.5 shadow-2xs">
+            <button 
+              type="button"
+              onClick={() => setOrientation(o => o === 'vertical' ? 'horizontal' : 'vertical')}
+              className="p-1.5 text-slate-600 hover:text-brand-600 hover:bg-slate-50 rounded-lg transition-colors"
+              title={`Orientación: ${orientation === 'vertical' ? 'Vertical (Árbol)' : 'Horizontal'}`}
+            >
+              {orientation === 'vertical' ? <Columns size={16} /> : <Rows size={16} />}
+            </button>
+            <div className="w-px h-4 bg-slate-200 my-auto" />
+            <button 
+              type="button"
+              onClick={() => setShowAutoConfirm(true)}
+              className="p-1.5 text-slate-600 hover:text-brand-600 hover:bg-slate-50 rounded-lg transition-colors"
+              title="Auto-organizar layout (eliminar posiciones manuales)"
+            >
+              <RotateCcw size={16} />
+            </button>
+            <div className="w-px h-4 bg-slate-200 my-auto" />
+            <button 
+              type="button"
+              onClick={handlePrint}
+              className="p-1.5 text-slate-600 hover:text-brand-600 hover:bg-slate-50 rounded-lg transition-colors"
+              title="Imprimir organigrama"
+            >
+              <Printer size={16} />
+            </button>
+          </div>
 
-          <Button variant="ghost" onClick={handleAutoOrganize} className="text-xs py-1.5 h-9 bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-700">
-            <GitBranch className="w-4 h-4 text-slate-500" /> Auto-organizar
-          </Button>
-
-          <Button variant="ghost" onClick={handlePrint} className="text-xs py-1.5 h-9 bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-700">
-            <Printer className="w-4 h-4 text-slate-500" /> Imprimir
+          {/* Botón Primario: Nuevo Cargo */}
+          <Button
+            variant="primary"
+            onClick={() => {
+              setModalMode('create');
+              setFormData({ nivel: 1, orden: 1, activo: true });
+              setIsModalOpen(true);
+            }}
+            className="text-xs py-2 h-9"
+          >
+            <Plus size={15} className="mr-1.5" />
+            Nuevo cargo
           </Button>
         </div>
       </div>
 
-      {/* VIEWPORT CANVAS */}
-      <div 
-        ref={containerRef}
-        className="organigrama-viewport-container flex-1 relative overflow-hidden cursor-grab active:cursor-grabbing bg-slate-50"
-        onMouseDown={handleCanvasPanStart}
-        onWheel={handleWheel}
-      >
-        <div 
-          className="organigrama-canvas absolute w-[10000px] h-[10000px]"
-          style={{ 
-            transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
-            transformOrigin: '0 0'
-          }}
-        >
-          {/* SVG CONNECTIONS */}
-          <svg className="absolute inset-0 pointer-events-none overflow-visible w-full h-full">
-            <defs>
-              <marker
-                id="arrow"
-                viewBox="0 0 10 10"
-                refX="8"
-                refY="5"
-                markerWidth="5"
-                markerHeight="5"
-                orient="auto-start-reverse"
+      {/* Estado Vacío cuando nodes.length === 0 */}
+      {nodes.length === 0 ? (
+        <div className="flex-1 flex items-center justify-center p-8">
+          <div className="max-w-md w-full bg-white rounded-2xl border border-slate-200 shadow-sm p-8 text-center flex flex-col items-center">
+            <div className="w-16 h-16 rounded-2xl bg-brand-50 text-brand-600 flex items-center justify-center mb-4 border border-brand-100 shadow-2xs">
+              <GitBranch size={32} />
+            </div>
+            <h3 className="text-base font-bold text-slate-800 mb-1.5">
+              Aún no has definido la estructura organizacional
+            </h3>
+            <p className="text-xs text-slate-500 mb-6 leading-relaxed">
+              Crea los cargos jerárquicos de tu empresa o carga la estructura base preconfigurada según los requisitos normativos del SG-SST (Dec. 1072 de 2015 / Res. 0312 de 2019).
+            </p>
+            <div className="flex flex-col sm:flex-row gap-3 w-full justify-center">
+              <Button
+                variant="primary"
+                onClick={() => importBaseOrgMutation.mutate()}
+                disabled={importBaseOrgMutation.isPending}
+                className="text-xs py-2 h-9 w-full sm:w-auto"
               >
-                <path d="M 0 1.5 L 8 5 L 0 8.5 z" fill="#cbd5e1" />
-              </marker>
-            </defs>
+                {importBaseOrgMutation.isPending ? (
+                  <Loader2 size={15} className="animate-spin mr-1.5" />
+                ) : (
+                  <ShieldCheck size={15} className="mr-1.5" />
+                )}
+                Cargar estructura base SG-SST
+              </Button>
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  setModalMode('create');
+                  setFormData({ nivel: 1, orden: 1, activo: true });
+                  setIsModalOpen(true);
+                }}
+                className="text-xs py-2 h-9 w-full sm:w-auto border-slate-200 text-slate-700"
+              >
+                <Plus size={15} className="mr-1.5" />
+                Crear primer cargo
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : (
+        /* Canvas Area */
+        <div 
+          ref={containerRef}
+          className="flex-1 relative overflow-hidden w-full h-full"
+          style={{
+            cursor: isDraggingCanvas ? 'grabbing' : (draggingNode ? 'grabbing' : 'grab'),
+            backgroundImage: 'radial-gradient(#cbd5e1 1.2px, transparent 1.2px)',
+            backgroundSize: '22px 22px',
+            backgroundPosition: `${pan.x}px ${pan.y}px`
+          }}
+          onWheel={handleWheel}
+          onMouseDown={handleCanvasMouseDown}
+          onMouseMove={handleCanvasMouseMove}
+          onMouseUp={handleCanvasMouseUp}
+          onMouseLeave={handleCanvasMouseUp}
+        >
+          <div 
+            className="absolute origin-top-left transition-transform duration-75 ease-out"
+            style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})` }}
+          >
+            {/* Edges */}
+            <svg className="absolute top-0 left-0 overflow-visible pointer-events-none">
+              {layoutNodes.map(node => {
+                if (!node.parent) return null;
+                
+                const parentPos = layoutNodes.find(n => n.data.id === node.parent?.data.id);
+                if (!parentPos) return null;
 
-            {visibleConnectors.map(node => {
-              const pPos = positions[node.padre_id!] || { x: 0, y: 0 }
-              const cPos = positions[node.id] || { x: 0, y: 0 }
-              
-              const startX = pPos.x + 110
-              const startY = pPos.y + 88
-              const endX = cPos.x + 110
-              const endY = cPos.y - 5
-              
-              const midY = (startY + endY) / 2
-              
-              const pathData = `M ${startX} ${startY} C ${startX} ${midY}, ${endX} ${midY}, ${endX} ${endY}`
+                let source: Point, target: Point;
+                
+                if (orientation === 'vertical') {
+                  source = { x: parentPos.x + 120, y: parentPos.y + 100 };
+                  target = { x: node.x + 120, y: node.y };
+                } else {
+                  source = { x: parentPos.x + 240, y: parentPos.y + 45 };
+                  target = { x: node.x, y: node.y + 45 };
+                }
+
+                return (
+                  <path
+                    key={`edge-${node.data.id}`}
+                    d={generatePath(source, target, orientation, node._isHangingLeaf)}
+                    fill="none"
+                    stroke="#CBD5E1"
+                    strokeWidth={1.5}
+                    className="transition-all duration-300"
+                  />
+                );
+              })}
+            </svg>
+
+            {/* Nodes */}
+            {layoutNodes.map(node => {
+              const hasChildren = nodes.some(n => n.padre_id === node.data.id);
+              const isCollapsed = collapsedNodes.has(node.data.id);
+              const color = getNodeColor(node.data);
+              const isDragging = draggingNode === node.data.id;
               
               return (
-                <path
-                  key={`conn-${node.id}`}
-                  d={pathData}
-                  fill="none"
-                  stroke="#cbd5e1"
-                  strokeWidth="2"
-                  className="svg-connector-path"
-                  markerEnd="url(#arrow)"
-                />
-              )
-            })}
-          </svg>
+                <div
+                  key={node.data.id}
+                  className={`node-card absolute bg-white rounded-[14px] transition-all duration-200 group
+                    ${isDragging ? 'shadow-2xl z-50 opacity-95 scale-105' : 'shadow-[0_1px_3px_rgba(0,0,0,0.08),0_1px_2px_rgba(0,0,0,0.06)] hover:shadow-lg hover:-translate-y-0.5 z-10'}
+                  `}
+                  style={{
+                    transform: `translate(${node.x}px, ${node.y}px)`,
+                    minWidth: '200px',
+                    maxWidth: '280px',
+                    borderLeft: `4px solid ${color}`,
+                    cursor: isDragging ? 'grabbing' : 'grab'
+                  }}
+                  onMouseDown={(e) => handleNodeMouseDown(e, node.data.id, node.x, node.y)}
+                >
+                  <div className="p-3.5 relative">
+                    {/* Floating actions overlay */}
+                    <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1 interactive-node-element bg-white/95 backdrop-blur-xs rounded-lg p-1 shadow-sm border border-slate-100">
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); handleCreateChild(node.data.id, node.data.nivel); }} 
+                        className="p-1 text-slate-400 hover:text-brand-600 hover:bg-brand-50 rounded-md transition-colors" 
+                        title="Agregar subordinado"
+                      >
+                        <Plus size={14} />
+                      </button>
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); handleEdit(node.data); }} 
+                        className="p-1 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-colors" 
+                        title="Editar"
+                      >
+                        <Edit2 size={14} />
+                      </button>
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); handleDelete(node.data.id); }} 
+                        className="p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors" 
+                        title="Eliminar"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
 
-          {/* NODES */}
-          {nodos && visibleNodes.map(node => {
-            const pos = positions[node.id] || { x: 100, y: 100 }
-            const lvl = getNodeLevel(node.id)
-            const style = getLevelColors(lvl)
-            const isEditing = inlineEditingId === node.id
+                    {/* Node Content */}
+                    <div className="flex flex-col gap-1.5">
+                      <div 
+                        className="text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full inline-block w-fit"
+                        style={{ backgroundColor: `${color}18`, color: color }}
+                      >
+                        {node.data.area || 'Sin Área'}
+                      </div>
+                      <div className="font-bold text-xs text-slate-850 line-clamp-2 leading-snug">
+                        {node.data.nombre_cargo}
+                      </div>
+                    </div>
+                  </div>
 
-            return (
-              <div
-                key={node.id}
-                className={`node-card group absolute w-[220px] h-[88px] rounded-2xl border border-slate-200 bg-white hover:border-slate-300 ${style.glow} shadow-sm p-4 flex flex-col justify-between cursor-pointer`}
-                style={{ 
-                  left: `${pos.x}px`, 
-                  top: `${pos.y}px`
-                }}
-                onMouseDown={(e) => handleNodeDragStart(e, node.id)}
-                onTouchStart={(e) => handleNodeTouchStart(e, node.id)}
-              >
-                {/* Accent stripe */}
-                <div className={`absolute top-0 left-0 bottom-0 w-1.5 rounded-l-2xl ${style.accent}`} />
-
-                {/* Header info */}
-                <div className="flex justify-between items-start gap-2 pl-1">
-                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider truncate max-w-[120px]">
-                    {node.area || 'Sin Área'}
-                  </span>
-                  <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-md ${style.badge} whitespace-nowrap`}>
-                    Nivel {lvl}
-                  </span>
-                </div>
-
-                {/* Cargo Name */}
-                <div className="pl-1 mb-1">
-                  {isEditing ? (
-                    <input
-                      value={inlineEditValue}
-                      onChange={(e) => setInlineEditValue(e.target.value)}
-                      onBlur={() => handleInlineEditSave(node.id)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') handleInlineEditSave(node.id)
-                        else if (e.key === 'Escape') setInlineEditingId(null)
-                      }}
-                      className="w-full bg-white border border-brand-500 text-slate-800 rounded px-2 py-0.5 text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-brand-500 interactive-node-element"
-                      autoFocus
-                      onClick={(e) => e.stopPropagation()}
-                      onMouseDown={(e) => e.stopPropagation()}
-                    />
-                  ) : (
-                    <h3 
-                      className="text-xs font-bold text-slate-800 tracking-wide truncate pr-2"
-                      title="Doble clic para editar"
-                      onDoubleClick={(e) => handleInlineEditStart(e, node)}
-                    >
-                      {node.nombre_cargo}
-                    </h3>
-                  )}
-                </div>
-
-                {/* Subordinate Toggle / Indicators */}
-                <div className="flex justify-between items-center pl-1">
-                  <span className="text-[9px] text-slate-500 font-semibold uppercase">
-                    Ord: <strong className="text-slate-700">{node.orden}</strong>
-                  </span>
-
-                  {hasChildren(node.id) && (
+                  {/* Collapse Toggle */}
+                  {hasChildren && (
                     <button
-                      onClick={(e) => handleToggleCollapse(e, node.id)}
-                      className="w-5 h-5 rounded-full bg-white border border-slate-200 flex items-center justify-center text-slate-500 hover:text-slate-800 hover:border-slate-400 transition-all cursor-pointer shadow-sm interactive-node-element"
-                      title={collapsedNodes[node.id] ? 'Expandir subordinados' : 'Colapsar subordinados'}
+                      onClick={(e) => { e.stopPropagation(); handleToggleCollapse(node.data.id); }}
+                      className="interactive-node-element absolute bg-white border border-slate-200 rounded-full p-0.5 shadow-xs text-slate-400 hover:text-brand-600 hover:border-brand-300 transition-colors z-20 flex items-center justify-center"
+                      style={{
+                        ...(orientation === 'vertical' ? {
+                          bottom: -11,
+                          left: '50%',
+                          transform: 'translateX(-50%)',
+                          width: 22,
+                          height: 22
+                        } : {
+                          right: -11,
+                          top: '50%',
+                          transform: 'translateY(-50%)',
+                          width: 22,
+                          height: 22
+                        })
+                      }}
                     >
-                      {collapsedNodes[node.id] ? (
-                        <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
-                      ) : (
-                        <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
-                      )}
+                      {isCollapsed ? 
+                        (orientation === 'vertical' ? <ChevronDown size={13} /> : <ChevronRight size={13} />) : 
+                        (orientation === 'vertical' ? <ChevronUp size={13} /> : <ChevronLeft size={13} />)
+                      }
                     </button>
                   )}
                 </div>
+              );
+            })}
+          </div>
 
-                {/* FLOATING ACTION OVERLAY */}
-                <div className="absolute -top-10 right-0 flex items-center gap-1 bg-white border border-slate-200 p-1.5 rounded-xl opacity-0 group-hover:opacity-100 transition-all duration-200 shadow-lg scale-90 origin-bottom-right group-hover:scale-100 pointer-events-none group-hover:pointer-events-auto interactive-node-element no-print">
-                  <button
-                    onClick={() => openAddModal(node.id)}
-                    className="p-1.5 rounded-lg text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition-colors"
-                    title="Agregar subordinado"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                  </button>
-                  <button
-                    onClick={() => openEditModal(node)}
-                    className="p-1.5 rounded-lg text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition-colors"
-                    title="Editar cargo"
-                  >
-                    <Edit2 className="w-3.5 h-3.5" />
-                  </button>
-                  <button
-                    onClick={() => handleDelete(node.id)}
-                    className="p-1.5 rounded-lg text-red-500 hover:text-red-600 hover:bg-red-50 transition-colors"
-                    title="Eliminar cargo"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              </div>
-            )
-          })}
-        </div>
-      </div>
+          {/* Floating Controls en la esquina inferior derecha del lienzo */}
+          <div className="absolute bottom-6 right-6 flex flex-col items-center gap-1 bg-white rounded-xl shadow-lg border border-slate-200 p-1 z-20">
+            <button 
+              type="button"
+              onClick={() => setZoom(z => Math.min(2.5, +(z + 0.15).toFixed(2)))} 
+              className="p-2 text-slate-600 hover:text-brand-600 hover:bg-slate-100 rounded-lg transition-colors" 
+              title="Acercar (+)"
+            >
+              <ZoomIn size={18} />
+            </button>
+            <div className="text-[11px] text-center font-bold text-slate-500 py-1 w-10 border-y border-slate-100 select-none">
+              {Math.round(zoom * 100)}%
+            </div>
+            <button 
+              type="button"
+              onClick={() => setZoom(z => Math.max(0.15, +(z - 0.15).toFixed(2)))} 
+              className="p-2 text-slate-600 hover:text-brand-600 hover:bg-slate-100 rounded-lg transition-colors" 
+              title="Alejar (-)"
+            >
+              <ZoomOut size={18} />
+            </button>
+            <div className="h-px w-6 bg-slate-200 my-0.5" />
+            <button 
+              type="button"
+              onClick={fitToScreen} 
+              className="p-2 text-slate-600 hover:text-brand-600 hover:bg-slate-100 rounded-lg transition-colors" 
+              title="Ajustar a pantalla"
+            >
+              <Maximize2 size={18} />
+            </button>
+            <button 
+              type="button"
+              onClick={() => setIsFullscreen(f => !f)} 
+              className="p-2 text-slate-600 hover:text-brand-600 hover:bg-slate-100 rounded-lg transition-colors" 
+              title={isFullscreen ? "Salir de pantalla completa" : "Pantalla completa"}
+            >
+              {isFullscreen ? <Minimize2 size={18} /> : <Maximize2 size={18} className="rotate-90" />}
+            </button>
+          </div>
 
-      {/* FLOATING CONTROLS (BOTTOM-RIGHT) */}
-      <div className="absolute bottom-6 right-6 flex items-center gap-1.5 bg-white border border-slate-200/80 p-2 rounded-2xl shadow-lg backdrop-blur-md z-10 no-print">
-        <button
-          onClick={handleZoomIn}
-          className="p-2 rounded-xl text-slate-600 hover:text-slate-900 hover:bg-slate-50 transition-colors"
-          title="Acercar (+)"
-        >
-          <ZoomIn className="w-4 h-4" />
-        </button>
-        <span className="text-[10px] font-bold text-slate-500 px-1 select-none min-w-[36px] text-center">
-          {Math.round(zoom * 100)}%
-        </span>
-        <button
-          onClick={handleZoomOut}
-          className="p-2 rounded-xl text-slate-600 hover:text-slate-900 hover:bg-slate-50 transition-colors"
-          title="Alejar (-)"
-        >
-          <ZoomOut className="w-4 h-4" />
-        </button>
-        <div className="w-[1px] h-6 bg-slate-200 mx-1" />
-        <button
-          onClick={() => fitToScreen()}
-          className="p-2 rounded-xl text-slate-600 hover:text-slate-900 hover:bg-slate-50 transition-colors"
-          title="Ajustar a pantalla"
-        >
-          <RotateCcw className="w-4 h-4" />
-        </button>
-      </div>
+          {/* Minimapa en la esquina inferior izquierda del lienzo */}
+          {layoutNodes.length > 0 && (
+            <div className="absolute bottom-6 left-6 w-[200px] h-[140px] bg-white rounded-xl shadow-lg border border-slate-200 overflow-hidden z-20 opacity-90 hover:opacity-100 transition-opacity cursor-pointer">
+              <div className="relative w-full h-full p-2">
+                {(() => {
+                  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+                  layoutNodes.forEach(n => {
+                    minX = Math.min(minX, n.x);
+                    minY = Math.min(minY, n.y);
+                    maxX = Math.max(maxX, n.x + 260);
+                    maxY = Math.max(maxY, n.y + 110);
+                  });
 
-      {/* MODAL */}
-      {modalOpen && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center z-50 p-4 no-print animate-fade-in">
-          <Card 
-            title={editingNodo ? 'Editar Cargo' : 'Registrar Nuevo Cargo'}
-            className="w-full max-w-md bg-white border border-slate-200 shadow-2xl relative overflow-hidden text-slate-800"
-            action={
-              <button onClick={closeModal} className="p-1.5 rounded-xl hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-all">
-                <X className="w-5 h-5" />
-              </button>
-            }
-          >
-            <form onSubmit={handleSubmit} className="space-y-4 mt-2">
-              {errorMsg && (
-                <div className="bg-red-50 border border-red-200 text-red-600 p-3.5 rounded-xl flex items-start gap-2.5 text-xs font-semibold leading-relaxed">
-                  <AlertTriangle className="w-4.5 h-4.5 flex-shrink-0 mt-0.5" />
-                  <span>{errorMsg}</span>
-                </div>
-              )}
+                  const scaleX = (184) / (maxX - minX || 1);
+                  const scaleY = (124) / (maxY - minY || 1);
+                  const scale = Math.min(scaleX, scaleY) * 0.9;
+                  
+                  const offsetX = 8 + (184 - (maxX - minX) * scale) / 2;
+                  const offsetY = 8 + (124 - (maxY - minY) * scale) / 2;
 
-              <FormField label="Nombre del Cargo *">
-                <Input
-                  value={nombreCargo}
-                  onChange={(e) => setNombreCargo(e.target.value)}
-                  placeholder="Ej. Director de Operaciones"
-                  className="bg-white border-slate-200 text-slate-850 rounded-xl focus:border-brand-500 focus:ring-brand-500"
-                  required
-                />
-              </FormField>
-
-              <FormField label="Área / Departamento">
-                <Input
-                  value={area}
-                  onChange={(e) => setArea(e.target.value)}
-                  placeholder="Ej. Recursos Humanos"
-                  className="bg-white border-slate-200 text-slate-850 rounded-xl focus:border-brand-500 focus:ring-brand-500"
-                />
-              </FormField>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-xs font-semibold text-slate-500 pl-0.5">Cargo Superior (Padre)</label>
-                  <select
-                    value={padreId}
-                    onChange={(e) => setPadreId(e.target.value)}
-                    className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-700 focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
-                  >
-                    <option value="">Ninguno (Raíz)</option>
-                    {nodos && nodos
-                      .filter(n => !editingNodo || (n.id !== editingNodo.id && !isDescendant(n.id, editingNodo.id)))
-                      .map(n => (
-                        <option key={n.id} value={n.id}>
-                          {n.nombre_cargo} ({n.area || 'Sin Área'})
-                        </option>
+                  return (
+                    <>
+                      {layoutNodes.map(n => (
+                        <div 
+                          key={`mini-${n.data.id}`}
+                          className="absolute rounded-[1px]"
+                          style={{
+                            left: offsetX + (n.x - minX) * scale,
+                            top: offsetY + (n.y - minY) * scale,
+                            width: 200 * scale,
+                            height: 70 * scale,
+                            backgroundColor: getNodeColor(n.data)
+                          }}
+                        />
                       ))}
-                  </select>
-                </div>
+                      
+                      {containerRef.current && (
+                        <div 
+                          className="absolute border-2 border-brand-500/60 bg-brand-500/10 pointer-events-none transition-all duration-75"
+                          style={{
+                            left: offsetX + (-pan.x / zoom - minX) * scale,
+                            top: offsetY + (-pan.y / zoom - minY) * scale,
+                            width: (containerRef.current.clientWidth / zoom) * scale,
+                            height: (containerRef.current.clientHeight / zoom) * scale
+                          }}
+                        />
+                      )}
+                    </>
+                  );
+                })()}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
-                <FormField label="Orden de visualización">
-                  <Input
-                    type="number"
-                    value={orden}
-                    onChange={(e) => setOrden(Number(e.target.value) || 0)}
-                    min={0}
-                    className="bg-white border-slate-200 text-slate-850 rounded-xl focus:border-brand-500 focus:ring-brand-500"
+      {/* Form Modal */}
+      {isModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden flex flex-col max-h-[90vh]">
+            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+              <h2 className="text-base font-bold text-slate-850">
+                {modalMode === 'create' ? 'Nuevo Cargo' : 'Editar Cargo'}
+              </h2>
+              <button 
+                onClick={() => setIsModalOpen(false)}
+                className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            
+            <div className="p-6 overflow-y-auto">
+              <form id="node-form" onSubmit={handleSaveModal} className="space-y-4">
+                <FormField label="Nombre del Cargo" required>
+                  <Input 
+                    value={formData.nombre_cargo || ''}
+                    onChange={e => setFormData({...formData, nombre_cargo: e.target.value})}
+                    placeholder="Ej. Gerente Comercial"
+                    required
                   />
                 </FormField>
-              </div>
 
-              <div className="flex justify-end gap-3 pt-4 border-t border-slate-100 mt-6">
-                <Button variant="ghost" onClick={closeModal} className="text-xs py-2 h-10 hover:bg-slate-100 text-slate-700">
-                  Cancelar
-                </Button>
-                <Button variant="primary" type="submit" className="text-xs py-2 h-10" disabled={createMutation.isPending || updateMutation.isPending}>
-                  {editingNodo ? 'Guardar Cambios' : 'Registrar Cargo'}
-                </Button>
+                <FormField label="Área / Departamento">
+                  <Input 
+                    value={formData.area || ''}
+                    onChange={e => setFormData({...formData, area: e.target.value})}
+                    placeholder="Ej. Ventas"
+                  />
+                </FormField>
+
+                <FormField label="Reporta a (Cargo Superior)">
+                  <select
+                    className="w-full rounded-xl border border-slate-200 text-xs py-2 px-3 focus:border-brand-500 focus:ring-brand-500"
+                    value={formData.padre_id || ''}
+                    onChange={e => setFormData({...formData, padre_id: e.target.value || null})}
+                  >
+                    <option value="">-- Ninguno (Raíz) --</option>
+                    {getValidParents(selectedNodeId).map(n => (
+                      <option key={n.id} value={n.id}>{n.nombre_cargo} ({n.area || 'Sin área'})</option>
+                    ))}
+                  </select>
+                </FormField>
+
+                {modalMode === 'edit' && (
+                  <div className="grid grid-cols-2 gap-4">
+                    <FormField label="Nivel Jerárquico">
+                      <Input 
+                        value={formData.nivel || ''}
+                        disabled
+                        className="bg-slate-50 text-slate-500"
+                      />
+                    </FormField>
+                    <FormField label="Orden (Posición)">
+                      <Input 
+                        type="number"
+                        value={formData.orden || ''}
+                        onChange={e => setFormData({...formData, orden: parseInt(e.target.value) || 0})}
+                      />
+                    </FormField>
+                  </div>
+                )}
+                
+                <div className="flex items-center gap-2 pt-1">
+                  <input
+                    type="checkbox"
+                    id="activo"
+                    checked={formData.activo !== false}
+                    onChange={e => setFormData({...formData, activo: e.target.checked})}
+                    className="rounded text-brand-600 focus:ring-brand-500 border-slate-300"
+                  />
+                  <label htmlFor="activo" className="text-xs font-medium text-slate-700">Cargo Activo</label>
+                </div>
+              </form>
+            </div>
+
+            <div className="px-6 py-4 border-t border-slate-100 bg-slate-50 flex justify-end gap-3">
+              <Button variant="ghost" onClick={() => setIsModalOpen(false)} className="text-xs py-2 h-9">
+                Cancelar
+              </Button>
+              <Button 
+                type="button" 
+                variant="primary"
+                onClick={() => {
+                  const f = document.getElementById('node-form') as HTMLFormElement;
+                  if (f) f.requestSubmit();
+                }}
+                disabled={createNodeMutation.isPending || updateNodeMutation.isPending}
+                className="text-xs py-2 h-9"
+              >
+                {(createNodeMutation.isPending || updateNodeMutation.isPending) ? (
+                  <Loader2 className="w-4 h-4 animate-spin mr-1.5" />
+                ) : null}
+                Guardar Cargo
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Auto Organize Confirm Modal */}
+      {showAutoConfirm && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden flex flex-col">
+            <div className="p-6 flex flex-col items-center text-center gap-4">
+              <div className="w-12 h-12 rounded-2xl bg-amber-100 text-amber-600 flex items-center justify-center">
+                <AlertTriangle size={24} />
               </div>
-            </form>
-          </Card>
+              <div>
+                <h3 className="text-base font-bold text-slate-800 mb-1">¿Auto-organizar posiciones?</h3>
+                <p className="text-xs text-slate-500 leading-relaxed">
+                  Esta acción restablecerá todas las posiciones manuales y aplicará un diseño compacto de árbol. No se puede deshacer.
+                </p>
+              </div>
+            </div>
+            <div className="px-6 py-4 border-t border-slate-100 bg-slate-50 flex justify-end gap-3">
+              <Button variant="ghost" onClick={() => setShowAutoConfirm(false)} className="text-xs py-2 h-9">
+                Cancelar
+              </Button>
+              <Button 
+                variant="primary" 
+                className="bg-amber-500 hover:bg-amber-600 text-white border-transparent text-xs py-2 h-9"
+                onClick={() => autoOrganizeMutation.mutate()} 
+                disabled={autoOrganizeMutation.isPending}
+              >
+                {autoOrganizeMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-1.5" /> : null}
+                Sí, organizar
+              </Button>
+            </div>
+          </div>
         </div>
       )}
     </div>
-  )
+  );
 }

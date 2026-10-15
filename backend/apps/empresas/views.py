@@ -211,6 +211,141 @@ class ObtenerEmpresaView(APIView):
         return Response(serializer.data)
 
 
+import re
+HEX_COLOR_REGEX = re.compile(r"^#(?:[0-9a-fA-F]{3}){1,2}$")
+
+
+# ── GET/PUT /api/modulo0/branding ─────────────────────────────────
+class BrandingEmpresaView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get_permissions(self):
+        if self.request.method == "PUT":
+            return [IsAuthenticated(), EsCorporativo()]
+        return [IsAuthenticated()]
+
+    def get(self, request):
+        empresa = request.user.empresa
+        if not empresa:
+            return Response(
+                {"message": "Sin empresa asociada."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        serializer = EmpresaSerializer(empresa)
+        return Response(serializer.data["branding"])
+
+    def put(self, request):
+        empresa = request.user.empresa
+        if not empresa:
+            return Response(
+                {"message": "Sin empresa asociada."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        data = request.data
+        if not isinstance(data, dict):
+            return Response(
+                {"message": "El cuerpo de la solicitud debe ser un objeto JSON.", "code": "INVALID_BODY"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        ALLOWED_TOP_KEYS = {"preset", "primario", "secundario", "acento", "mapa_procesos"}
+        unknown_top_keys = set(data.keys()) - ALLOWED_TOP_KEYS
+        if unknown_top_keys:
+            return Response(
+                {
+                    "message": f"Claves no reconocidas en la configuración de branding: {', '.join(sorted(unknown_top_keys))}.",
+                    "code": "UNKNOWN_KEYS",
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        COLOR_FIELDS = ["primario", "secundario", "acento"]
+        for field in COLOR_FIELDS:
+            if field in data:
+                val = data[field]
+                if val is not None and not (isinstance(val, str) and HEX_COLOR_REGEX.match(val.strip())):
+                    return Response(
+                        {
+                            "message": f"Color hexadecimal inválido para '{field}': {val}",
+                            "code": "INVALID_HEX_COLOR",
+                        },
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+
+        if "mapa_procesos" in data:
+            mp = data["mapa_procesos"]
+            if mp is not None:
+                if not isinstance(mp, dict):
+                    return Response(
+                        {"message": "'mapa_procesos' debe ser un objeto JSON.", "code": "INVALID_MAPA_PROCESOS"},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+
+                ALLOWED_MP_KEYS = {
+                    "estrategico", "misional", "apoyo",
+                    "entradas", "salidas", "fondo",
+                    "texto_entradas", "texto_salidas"
+                }
+                unknown_mp_keys = set(mp.keys()) - ALLOWED_MP_KEYS
+                if unknown_mp_keys:
+                    return Response(
+                        {
+                            "message": f"Claves no reconocidas en mapa_procesos: {', '.join(sorted(unknown_mp_keys))}.",
+                            "code": "UNKNOWN_KEYS",
+                        },
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+
+                MP_COLOR_FIELDS = ["estrategico", "misional", "apoyo", "entradas", "salidas", "fondo"]
+                for field in MP_COLOR_FIELDS:
+                    if field in mp:
+                        val = mp[field]
+                        if val is not None and not (isinstance(val, str) and HEX_COLOR_REGEX.match(val.strip())):
+                            return Response(
+                                {
+                                    "message": f"Color hexadecimal inválido para mapa_procesos.{field}: {val}",
+                                    "code": "INVALID_HEX_COLOR",
+                                },
+                                status=status.HTTP_400_BAD_REQUEST,
+                            )
+
+        # Merge with existing branding or create new
+        old_branding = empresa.branding or {}
+        new_branding = dict(old_branding)
+
+        for k, v in data.items():
+            if k == "mapa_procesos" and isinstance(v, dict):
+                existing_mp = new_branding.get("mapa_procesos")
+                if not isinstance(existing_mp, dict):
+                    existing_mp = {}
+                existing_mp.update(v)
+                new_branding["mapa_procesos"] = existing_mp
+            else:
+                new_branding[k] = v
+
+        with transaction.atomic():
+            empresa.branding = new_branding
+            empresa.save(update_fields=["branding", "updated_at"])
+
+            AuditLog.objects.create(
+                usuario=request.user,
+                empresa=empresa,
+                accion="ACTUALIZAR_BRANDING_EMPRESA",
+                tabla_afectada="empresas",
+                registro_id=str(empresa.id),
+                valores_anteriores=old_branding,
+                valores_nuevos=new_branding,
+                ip=get_ip(request),
+                user_agent=request.META.get("HTTP_USER_AGENT", ""),
+                ruta=request.path,
+                metodo_http=request.method,
+            )
+
+        serializer = EmpresaSerializer(empresa)
+        return Response(serializer.data["branding"], status=status.HTTP_200_OK)
+
+
 # ── GET/PUT /api/modulo0/contexto ─────────────────────────────────
 class ContextoEmpresaView(APIView):
     permission_classes = [IsAuthenticated, EsCorporativo]
