@@ -379,8 +379,69 @@ export default function ProcesosView() {
   }
 
   /**
+   * Aplica estilos computados inline a cada elemento del clon del mapa.
+   * Recorre el DOM original (donde Tailwind ya resolvió las clases) y copia
+   * las propiedades CSS críticas como style inline en el clon, para que
+   * el HTML sea autosuficiente sin necesidad de hojas de estilo externas.
+   */
+  const applyComputedInlineStyles = (src: Element, dst: Element) => {
+    if (!(src instanceof HTMLElement) || !(dst instanceof HTMLElement)) return
+
+    const cs = window.getComputedStyle(src)
+    const props = [
+      // Layout
+      'display', 'flexDirection', 'flexWrap', 'alignItems', 'justifyContent',
+      'gap', 'rowGap', 'columnGap',
+      'gridTemplateColumns', 'gridTemplateRows', 'gridColumn', 'gridRow',
+      // Box model
+      'padding', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft',
+      'margin', 'marginTop', 'marginRight', 'marginBottom', 'marginLeft',
+      'width', 'minWidth', 'maxWidth', 'height', 'minHeight', 'maxHeight',
+      // Visual
+      'backgroundColor', 'backgroundImage', 'background',
+      'border', 'borderRadius',
+      'borderTopWidth', 'borderTopStyle', 'borderTopColor',
+      'borderRightWidth', 'borderRightStyle', 'borderRightColor',
+      'borderBottomWidth', 'borderBottomStyle', 'borderBottomColor',
+      'borderLeftWidth', 'borderLeftStyle', 'borderLeftColor',
+      'boxShadow', 'clipPath', 'overflow', 'opacity',
+      // Typography
+      'color', 'fontSize', 'fontWeight', 'fontFamily', 'lineHeight',
+      'letterSpacing', 'textTransform', 'textAlign', 'whiteSpace',
+      // Position
+      'position', 'top', 'right', 'bottom', 'left', 'zIndex',
+      'flexShrink', 'flexGrow',
+    ]
+
+    const existing = dst.getAttribute('style') || ''
+    const additions: string[] = []
+    for (const prop of props) {
+      try {
+        const val = (cs as any)[prop]
+        if (val == null || val === '') continue
+        // Convertir camelCase a kebab-case para CSS
+        const kebab = prop.replace(/[A-Z]/g, (m) => `-${m.toLowerCase()}`)
+        // No sobreescribir estilos ya presentes (los inline originales)
+        if (existing.includes(kebab)) continue
+        additions.push(`${kebab}:${val}`)
+      } catch (_) {}
+    }
+    if (additions.length > 0) {
+      dst.setAttribute('style', existing + (existing ? ';' : '') + additions.join(';'))
+    }
+
+    // Recursar en hijos
+    const srcChildren = src.children
+    const dstChildren = dst.children
+    for (let i = 0; i < Math.min(srcChildren.length, dstChildren.length); i++) {
+      applyComputedInlineStyles(srcChildren[i], dstChildren[i])
+    }
+  }
+
+  /**
    * Construye la configuración del ExportSheet a partir de empresa + branding + mapa DOM.
-   * Convierte el logo a data URL para que funcione en iframes aislados y html2canvas.
+   * Convierte el logo a data URL y aplica estilos computados inline al clon del mapa
+   * para que se renderice correctamente incluso sin CSS externo.
    */
   const buildExportConfig = async (): Promise<ExportSheetConfig | null> => {
     if (!mapRef.current) return null
@@ -389,13 +450,9 @@ export default function ProcesosView() {
 
     // Clonar el mapa para no alterar el DOM visible
     const mapClone = mapRef.current.cloneNode(true) as HTMLElement
-    // Copiar estilos computados de elementos con style inline (colors, backgrounds)
-    const origElements = mapRef.current.querySelectorAll('[style]')
-    const cloneElements = mapClone.querySelectorAll('[style]')
-    origElements.forEach((orig, idx) => {
-      const clone = cloneElements[idx]
-      if (clone) (clone as HTMLElement).setAttribute('style', (orig as HTMLElement).getAttribute('style') || '')
-    })
+
+    // Aplicar todos los estilos computados como inline en el clon
+    applyComputedInlineStyles(mapRef.current, mapClone)
 
     return {
       title: 'Mapa de Procesos Organizacional',
