@@ -42,6 +42,8 @@ export default function ReclutamientoView() {
     telefono: '',
     ciudad: '',
     titulo_profesional: '',
+    profesion: '',
+    area_conocimiento: '',
     nivel_educativo: 'universitario',
     anios_experiencia: 1,
     autoriza_tratamiento_datos: true,
@@ -392,6 +394,8 @@ export default function ReclutamientoView() {
         autoriza_tratamiento_datos: newCandidatoData.autoriza_tratamiento_datos,
         perfil: {
           titulo_profesional: newCandidatoData.titulo_profesional.trim(),
+          profesion: newCandidatoData.profesion.trim(),
+          area_conocimiento: newCandidatoData.area_conocimiento.trim(),
           nivel_educativo: newCandidatoData.nivel_educativo,
           anios_experiencia: aniosExp,
         },
@@ -430,16 +434,23 @@ export default function ReclutamientoView() {
       email: c.email,
       telefono: c.telefono || '',
       ciudad: c.ciudad || '',
+      departamento: c.departamento || '',
+      municipio: c.municipio || '',
       direccion: c.direccion || '',
+      estado_perfil: c.estado_perfil || 'activo',
       notas_internas: c.notas_internas || '',
       autoriza_tratamiento_datos: c.autoriza_tratamiento_datos,
       perfil: {
         titulo_profesional: c.perfil?.titulo_profesional || '',
+        profesion: c.perfil?.profesion || '',
+        area_conocimiento: c.perfil?.area_conocimiento || '',
         nivel_educativo: c.perfil?.nivel_educativo || '',
         resumen_profesional: c.perfil?.resumen_profesional || '',
         anios_experiencia: c.perfil?.anios_experiencia ?? 0,
         competencias: c.perfil?.competencias || [],
         certificaciones: c.perfil?.certificaciones || [],
+        cargos_interes: c.perfil?.cargos_interes || [],
+        disponibilidad: c.perfil?.disponibilidad || '',
         disponibilidad_viaje: c.perfil?.disponibilidad_viaje || false,
         disponibilidad_traslado: c.perfil?.disponibilidad_traslado || false,
         aspiracion_salarial: c.perfil?.aspiracion_salarial ?? null,
@@ -1841,6 +1852,26 @@ export default function ReclutamientoView() {
                     <input className="w-full p-2 border rounded-lg" value={editCandidatoData.direccion || ''}
                       onChange={(e) => setEditCandidatoData((p: any) => ({ ...p, direccion: e.target.value }))} />
                   </div>
+                  <div>
+                    <label className="block text-slate-700 font-medium mb-1">Departamento</label>
+                    <input className="w-full p-2 border rounded-lg" value={editCandidatoData.departamento || ''}
+                      onChange={(e) => setEditCandidatoData((p: any) => ({ ...p, departamento: e.target.value }))} />
+                  </div>
+                  <div>
+                    <label className="block text-slate-700 font-medium mb-1">Municipio</label>
+                    <input className="w-full p-2 border rounded-lg" value={editCandidatoData.municipio || ''}
+                      onChange={(e) => setEditCandidatoData((p: any) => ({ ...p, municipio: e.target.value }))} />
+                  </div>
+                  <div>
+                    <label className="block text-slate-700 font-medium mb-1">Estado del perfil</label>
+                    <select className="w-full p-2 border rounded-lg" value={editCandidatoData.estado_perfil || 'activo'}
+                      onChange={(e) => setEditCandidatoData((p: any) => ({ ...p, estado_perfil: e.target.value }))}>
+                      <option value="activo">Activo</option>
+                      <option value="en_busqueda">En búsqueda</option>
+                      <option value="contratado">Contratado</option>
+                      <option value="descartado">Descartado</option>
+                    </select>
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">
@@ -1875,6 +1906,26 @@ export default function ReclutamientoView() {
                     <input type="number" min={0} className="w-full p-2 border rounded-lg" value={editCandidatoData.perfil?.aspiracion_salarial ?? ''}
                       onChange={(e) => setEditCandidatoData((p: any) => ({ ...p, perfil: { ...p.perfil, aspiracion_salarial: e.target.value ? Number(e.target.value) : null } }))} />
                   </div>
+                  <div>
+                    <label className="block text-slate-700 font-medium mb-1">Profesión</label>
+                    <input className="w-full p-2 border rounded-lg" value={editCandidatoData.perfil?.profesion || ''}
+                      onChange={(e) => setEditCandidatoData((p: any) => ({ ...p, perfil: { ...p.perfil, profesion: e.target.value } }))} />
+                  </div>
+                  <div>
+                    <label className="block text-slate-700 font-medium mb-1">Área de conocimiento</label>
+                    <input className="w-full p-2 border rounded-lg" value={editCandidatoData.perfil?.area_conocimiento || ''}
+                      onChange={(e) => setEditCandidatoData((p: any) => ({ ...p, perfil: { ...p.perfil, area_conocimiento: e.target.value } }))} />
+                  </div>
+                  <div>
+                    <label className="block text-slate-700 font-medium mb-1">Disponibilidad</label>
+                    <select className="w-full p-2 border rounded-lg" value={editCandidatoData.perfil?.disponibilidad || ''}
+                      onChange={(e) => setEditCandidatoData((p: any) => ({ ...p, perfil: { ...p.perfil, disponibilidad: e.target.value } }))}>
+                      <option value="">—</option>
+                      <option value="inmediata">Inmediata</option>
+                      <option value="con_preaviso">Con preaviso</option>
+                      <option value="no_disponible">No disponible</option>
+                    </select>
+                  </div>
                 </div>
 
                 <div>
@@ -1896,6 +1947,12 @@ export default function ReclutamientoView() {
                       value={Array.isArray(editCandidatoData.perfil?.certificaciones) ? editCandidatoData.perfil.certificaciones.join(', ') : ''}
                       onChange={(e) => setEditCandidatoData((p: any) => ({ ...p, perfil: { ...p.perfil, certificaciones: e.target.value.split(',').map((s: string) => s.trim()).filter(Boolean) } }))} />
                   </div>
+                  <div className="col-span-2">
+                    <label className="block text-slate-700 font-medium mb-1">Cargos de interés (separados por coma)</label>
+                    <input className="w-full p-2 border rounded-lg"
+                      value={Array.isArray(editCandidatoData.perfil?.cargos_interes) ? editCandidatoData.perfil.cargos_interes.join(', ') : ''}
+                      onChange={(e) => setEditCandidatoData((p: any) => ({ ...p, perfil: { ...p.perfil, cargos_interes: e.target.value.split(',').map((s: string) => s.trim()).filter(Boolean) } }))} />
+                  </div>
                 </div>
 
                 <div>
@@ -1913,6 +1970,7 @@ export default function ReclutamientoView() {
                   <div><div className="text-slate-400">Ciudad</div><div className="font-medium text-slate-800">{selectedCandidato.ciudad || '—'}</div></div>
                   <div><div className="text-slate-400">Dirección</div><div className="font-medium text-slate-800">{selectedCandidato.direccion || '—'}</div></div>
                   <div><div className="text-slate-400">Habeas Data</div><div className="font-medium text-slate-800">{selectedCandidato.autoriza_tratamiento_datos ? 'Autorizado' : 'Sin autorizar'}</div></div>
+                  <div><div className="text-slate-400">Estado del perfil</div><div className="font-medium text-slate-800">{selectedCandidato.estado_perfil_display || selectedCandidato.estado_perfil || '—'}</div></div>
                 </div>
 
                 {/* Perfil profesional */}
@@ -1920,7 +1978,10 @@ export default function ReclutamientoView() {
                   <div className="font-bold text-slate-800 flex items-center gap-2"><Award className="w-4 h-4 text-primary-500" /> Perfil Profesional</div>
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                     <div><div className="text-slate-400">Título</div><div className="font-medium text-slate-800">{selectedCandidato.perfil?.titulo_profesional || '—'}</div></div>
+                    <div><div className="text-slate-400">Profesión</div><div className="font-medium text-slate-800">{selectedCandidato.perfil?.profesion || '—'}</div></div>
+                    <div><div className="text-slate-400">Área de conocimiento</div><div className="font-medium text-slate-800">{selectedCandidato.perfil?.area_conocimiento || '—'}</div></div>
                     <div><div className="text-slate-400">Nivel educativo</div><div className="font-medium text-slate-800">{selectedCandidato.perfil?.nivel_educativo || '—'}</div></div>
+                    <div><div className="text-slate-400">Disponibilidad</div><div className="font-medium text-slate-800">{selectedCandidato.perfil?.disponibilidad || '—'}</div></div>
                     <div><div className="text-slate-400">Experiencia</div><div className="font-medium text-slate-800">{selectedCandidato.perfil?.anios_experiencia ?? 0} años</div></div>
                     <div><div className="text-slate-400">Aspiración salarial</div><div className="font-medium text-slate-800">{selectedCandidato.perfil?.aspiracion_salarial ? `$${Number(selectedCandidato.perfil.aspiracion_salarial).toLocaleString('es-CO')}` : '—'}</div></div>
                     <div><div className="text-slate-400">Disponibilidad viaje</div><div className="font-medium text-slate-800">{selectedCandidato.perfil?.disponibilidad_viaje ? 'Sí' : 'No'}</div></div>
@@ -1934,6 +1995,16 @@ export default function ReclutamientoView() {
                       <div className="text-slate-400 mb-1">Competencias</div>
                       <div className="flex flex-wrap gap-1.5">
                         {selectedCandidato.perfil.competencias.map((c, i) => (
+                          <span key={i} className="px-2 py-0.5 rounded-full bg-white border border-slate-200 text-slate-700">{c}</span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {!!selectedCandidato.perfil?.cargos_interes?.length && (
+                    <div>
+                      <div className="text-slate-400 mb-1">Cargos de interés</div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {selectedCandidato.perfil.cargos_interes.map((c, i) => (
                           <span key={i} className="px-2 py-0.5 rounded-full bg-white border border-slate-200 text-slate-700">{c}</span>
                         ))}
                       </div>
@@ -2156,6 +2227,27 @@ export default function ReclutamientoView() {
                   className="w-full p-2 border rounded-lg"
                   placeholder="Ej: Ingeniero SST, Tecnólogo en Alturas"
                 />
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-slate-700 font-medium mb-1">Profesión:</label>
+                  <input
+                    type="text"
+                    value={newCandidatoData.profesion}
+                    onChange={(e) => setNewCandidatoData(p => ({ ...p, profesion: e.target.value }))}
+                    className="w-full p-2 border rounded-lg"
+                  />
+                </div>
+                <div>
+                  <label className="block text-slate-700 font-medium mb-1">Área de conocimiento:</label>
+                  <input
+                    type="text"
+                    value={newCandidatoData.area_conocimiento}
+                    onChange={(e) => setNewCandidatoData(p => ({ ...p, area_conocimiento: e.target.value }))}
+                    className="w-full p-2 border rounded-lg"
+                  />
+                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-2">

@@ -54,9 +54,16 @@ export interface FuenteReclutamiento {
 export interface PerfilCandidato {
   id?: string
   titulo_profesional?: string
+  profesion?: string
+  area_conocimiento?: string
   nivel_educativo?: string
   resumen_profesional?: string
   anios_experiencia?: number
+  cargos_interes?: string[]
+  idiomas?: Array<{ idioma: string; nivel: string }>
+  licencias?: Array<{ nombre: string; numero?: string; entidad?: string; vencimiento?: string }>
+  disponibilidad?: string
+  fecha_disponible?: string | null
   experiencia_laboral?: Array<{
     empresa: string
     cargo: string
@@ -125,6 +132,12 @@ export interface CandidatoListItem {
 
 export interface CandidatoDetail extends CandidatoListItem {
   direccion?: string
+  departamento?: string
+  municipio?: string
+  fecha_nacimiento?: string | null
+  estado_perfil?: string
+  estado_perfil_display?: string
+  registrado_por?: string
   fuente_detalle?: string
   fecha_autorizacion_datos?: string
   notas_internas?: string

@@ -56,6 +56,12 @@ class Candidato(models.Model):
         PPT = "PPT", "Permiso por Protección Temporal"
         OTRO = "OTRO", "Otro"
 
+    class EstadoPerfil(models.TextChoices):
+        ACTIVO = "activo", "Activo"
+        EN_BUSQUEDA = "en_busqueda", "En búsqueda"
+        CONTRATADO = "contratado", "Contratado"
+        DESCARTADO = "descartado", "Descartado"
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     empresa = models.ForeignKey(
         "empresas.Empresa",
@@ -73,7 +79,20 @@ class Candidato(models.Model):
     email = models.EmailField()
     telefono = models.CharField(max_length=50, blank=True, default="")
     ciudad = models.CharField(max_length=100, blank=True, default="")
+    departamento = models.CharField(max_length=100, blank=True, default="")
+    municipio = models.CharField(max_length=100, blank=True, default="")
     direccion = models.CharField(max_length=255, blank=True, default="")
+    fecha_nacimiento = models.DateField(null=True, blank=True)
+    estado_perfil = models.CharField(
+        max_length=20,
+        choices=EstadoPerfil.choices,
+        default=EstadoPerfil.ACTIVO,
+        help_text="Estado del candidato dentro del Banco de Talento",
+    )
+    registrado_por = models.CharField(
+        max_length=150, blank=True, default="",
+        help_text="Usuario (RH) que registró manualmente al candidato",
+    )
     fuente_reclutamiento = models.ForeignKey(
         FuenteReclutamiento,
         on_delete=models.SET_NULL,
@@ -175,6 +194,26 @@ class PerfilCandidato(models.Model):
         blank=True,
         help_text="Lista de competencias técnicas y blandas",
     )
+    profesion = models.CharField(max_length=255, blank=True, default="")
+    area_conocimiento = models.CharField(max_length=255, blank=True, default="")
+    cargos_interes = models.JSONField(
+        default=list, blank=True, help_text="Cargos de interés del candidato"
+    )
+    idiomas = models.JSONField(
+        default=list, blank=True, help_text="Idiomas y nivel: [{idioma, nivel}]"
+    )
+    licencias = models.JSONField(
+        default=list,
+        blank=True,
+        help_text="Licencias estructuradas: [{nombre, numero, entidad, vencimiento}]",
+    )
+    disponibilidad = models.CharField(
+        max_length=20,
+        blank=True,
+        default="",
+        help_text="inmediata / con_preaviso / no_disponible",
+    )
+    fecha_disponible = models.DateField(null=True, blank=True)
     aspiracion_salarial = models.DecimalField(
         max_digits=12,
         decimal_places=2,

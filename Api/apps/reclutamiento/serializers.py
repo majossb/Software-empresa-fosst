@@ -51,6 +51,8 @@ class PerfilCandidatoSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "titulo_profesional",
+            "profesion",
+            "area_conocimiento",
             "nivel_educativo",
             "resumen_profesional",
             "anios_experiencia",
@@ -58,6 +60,11 @@ class PerfilCandidatoSerializer(serializers.ModelSerializer):
             "formacion_academica",
             "certificaciones",
             "competencias",
+            "cargos_interes",
+            "idiomas",
+            "licencias",
+            "disponibilidad",
+            "fecha_disponible",
             "aspiracion_salarial",
             "disponibilidad_viaje",
             "disponibilidad_traslado",
@@ -146,6 +153,7 @@ class CandidatoListSerializer(serializers.ModelSerializer):
 
 class CandidatoDetailSerializer(serializers.ModelSerializer):
     tipo_documento_display = serializers.CharField(source="get_tipo_documento_display", read_only=True)
+    estado_perfil_display = serializers.CharField(source="get_estado_perfil_display", read_only=True)
     nombre_completo = serializers.CharField(read_only=True)
     fuente_reclutamiento_nombre = serializers.CharField(
         source="fuente_reclutamiento.nombre", read_only=True, default=""
@@ -167,7 +175,13 @@ class CandidatoDetailSerializer(serializers.ModelSerializer):
             "email",
             "telefono",
             "ciudad",
+            "departamento",
+            "municipio",
             "direccion",
+            "fecha_nacimiento",
+            "estado_perfil",
+            "estado_perfil_display",
+            "registrado_por",
             "fuente_reclutamiento",
             "fuente_reclutamiento_nombre",
             "fuente_detalle",
@@ -217,7 +231,12 @@ class CandidatoCreateUpdateSerializer(serializers.ModelSerializer):
             "email",
             "telefono",
             "ciudad",
+            "departamento",
+            "municipio",
             "direccion",
+            "fecha_nacimiento",
+            "estado_perfil",
+            "registrado_por",
             "fuente_reclutamiento",
             "fuente_detalle",
             "autoriza_tratamiento_datos",
