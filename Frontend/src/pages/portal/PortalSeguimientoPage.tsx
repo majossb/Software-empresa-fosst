@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { reclutamientoService } from '@/services/reclutamiento.service'
 import { PostulacionCandidatoPublica, VacantePublicaListItem, CandidatoPerfilCompleto } from '@/types/reclutamiento.types'
+import { PortalModal, PortalToast, PortalFeedback } from './portal.ui'
 import {
   UserCheck, Mail, KeyRound, ArrowLeft, LogOut, CheckCircle2,
   Building2, Briefcase, MapPin, Zap, FileText, Check, Sparkles, User
@@ -22,6 +23,9 @@ export default function PortalSeguimientoPage() {
   const [appliedVacanteIds, setAppliedVacanteIds] = useState<string[]>([])
   const [editingPerfil, setEditingPerfil] = useState(false)
   const [perfilEdit, setPerfilEdit] = useState<any>({})
+  const [feedback, setFeedback] = useState<PortalFeedback>(null)
+  const [retiroPostulacionId, setRetiroPostulacionId] = useState<string | null>(null)
+  const [retiroMotivo, setRetiroMotivo] = useState('')
 
   useEffect(() => {
     const token = reclutamientoService.getCandidateToken()
@@ -40,7 +44,7 @@ export default function PortalSeguimientoPage() {
       setStep('otp')
       setStatusMessage(res.detail || 'Código OTP enviado a su correo.')
     } catch (err: any) {
-      alert(err.message || 'No se encontró ninguna postulación con este correo electrónico.')
+      setFeedback({ type: 'error', text: err.message || 'No se encontró ninguna postulación con este correo electrónico.' })
     } finally {
       setLoading(false)
     }
@@ -55,7 +59,7 @@ export default function PortalSeguimientoPage() {
       setCandidateInfo(res.candidato)
       await cargarDashboard()
     } catch (err: any) {
-      alert(err.message || 'Código OTP inválido o expirado.')
+      setFeedback({ type: 'error', text: err.message || 'Código OTP inválido o expirado.' })
     } finally {
       setLoading(false)
     }
@@ -93,28 +97,34 @@ export default function PortalSeguimientoPage() {
     setApplyingVacanteId(vacanteIdOrSlug)
     try {
       const res = await reclutamientoService.postularRapido(vacanteIdOrSlug)
-      alert(res.detail || '¡Postulación registrada con éxito!')
+      setFeedback({ type: 'success', text: res.detail || '¡Postulación registrada con éxito!' })
       setAppliedVacanteIds(prev => [...prev, vacanteCodigo])
       const updatedPosts = await reclutamientoService.getMisPostulaciones()
       setPostulaciones(updatedPosts)
     } catch (err: any) {
-      alert(err.message || 'Error al postularse a la vacante.')
+      setFeedback({ type: 'error', text: err.message || 'Error al postularse a la vacante.' })
     } finally {
       setApplyingVacanteId(null)
     }
   }
 
-  const handleRetirar = async (postulacionId: string) => {
-    const motivo = prompt('Por favor indique el motivo de retiro voluntario:')
-    if (!motivo) return
+  const abrirRetiro = (postulacionId: string) => {
+    setRetiroPostulacionId(postulacionId)
+    setRetiroMotivo('')
+  }
 
+  const confirmarRetiro = async () => {
+    if (!retiroPostulacionId) return
     try {
-      await reclutamientoService.retirarMiPostulacion(postulacionId, motivo)
-      alert('Su postulación ha sido retirada exitosamente.')
+      await reclutamientoService.retirarMiPostulacion(retiroPostulacionId, retiroMotivo)
+      setRetiroPostulacionId(null)
+      setRetiroMotivo('')
+      setFeedback({ type: 'success', text: 'Su postulación ha sido retirada exitosamente.' })
       const updated = await reclutamientoService.getMisPostulaciones()
       setPostulaciones(updated)
     } catch (err: any) {
-      alert(err.message || 'Error al retirar la postulación.')
+      setRetiroPostulacionId(null)
+      setFeedback({ type: 'error', text: err.message || 'Error al retirar la postulación.' })
     }
   }
 
@@ -137,8 +147,9 @@ export default function PortalSeguimientoPage() {
       const updated = await reclutamientoService.actualizarMiPerfil(perfilEdit)
       setPerfilCompleto(updated)
       setEditingPerfil(false)
+      setFeedback({ type: 'success', text: 'Perfil actualizado correctamente.' })
     } catch (err: any) {
-      alert(err.message || 'No se pudo actualizar el perfil.')
+      setFeedback({ type: 'error', text: err.message || 'No se pudo actualizar el perfil.' })
     }
   }
 
@@ -153,6 +164,8 @@ export default function PortalSeguimientoPage() {
 
   return (
     <div className="min-h-screen bg-slate-900 text-slate-100 flex flex-col justify-between py-8 px-4">
+      <PortalToast feedback={feedback} onClose={() => setFeedback(null)} />
+
       <div className="max-w-4xl mx-auto w-full space-y-6">
         {/* Topbar navigation */}
         <div className="flex items-center justify-between pb-4 border-b border-slate-800">
@@ -356,7 +369,7 @@ export default function PortalSeguimientoPage() {
 
                         {p.es_activa && (
                           <button
-                            onClick={() => handleRetirar(p.id)}
+                            onClick={() => abrirRetiro(p.id)}
                             className="text-xs text-rose-400 hover:text-rose-300 font-medium hover:underline"
                           >
                             Retirar candidatura
@@ -585,6 +598,47 @@ export default function PortalSeguimientoPage() {
       <footer className="text-center text-xs text-slate-600 pt-6">
         FOSST V.I.D.A. — Seguimiento transparente y confidencial de postulaciones.
       </footer>
+
+      <PortalModal
+        open={!!retiroPostulacionId}
+        onClose={() => { setRetiroPostulacionId(null); setRetiroMotivo('') }}
+        title="Retirar candidatura"
+      >
+        <div className="space-y-4 text-slate-200">
+          <p className="text-slate-400 leading-relaxed">
+            ¿Confirmas que deseas retirar tu candidatura? Esta acción cierra tu postulación y no se puede deshacer.
+          </p>
+          <div>
+            <label className="block text-slate-300 font-medium mb-1">Motivo (opcional)</label>
+            <textarea
+              rows={3}
+              value={retiroMotivo}
+              onChange={(e) => setRetiroMotivo(e.target.value)}
+              placeholder="Ej: Acepté otra oferta laboral"
+              className="w-full p-2.5 rounded-lg bg-slate-900 border border-slate-700 text-white placeholder:text-slate-600"
+            />
+            <p className="text-[11px] text-slate-500 mt-1">
+              Si lo dejas vacío, se registrará como "Retiro voluntario".
+            </p>
+          </div>
+          <div className="flex justify-end gap-2 pt-1">
+            <button
+              type="button"
+              onClick={() => { setRetiroPostulacionId(null); setRetiroMotivo('') }}
+              className="px-4 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-white font-bold transition"
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              onClick={confirmarRetiro}
+              className="px-4 py-2 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-bold transition"
+            >
+              Retirar candidatura
+            </button>
+          </div>
+        </div>
+      </PortalModal>
     </div>
   )
 }

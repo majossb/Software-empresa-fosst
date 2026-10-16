@@ -336,9 +336,13 @@ def retirar_postulacion_candidato(
     if not postulacion.es_activa:
         raise ValidationError("La postulación ya se encuentra finalizada y no puede ser retirada.")
 
+    # El motivo es opcional para el retiro del candidato (RN-R05): si no lo indica,
+    # se registra un texto por defecto para satisfacer la trazabilidad.
+    motivo_final = (motivo or "").strip() or "Retiro voluntario solicitado por el candidato en el portal"
+
     return cerrar_postulacion(
         postulacion=postulacion,
         nuevo_estado=Postulacion.Estado.RETIRO_CANDIDATURA,
-        motivo=motivo,
+        motivo=motivo_final,
         datos_adicionales={"origen": "portal_candidato"},
     )

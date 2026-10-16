@@ -86,6 +86,7 @@ export default function ReclutamientoView() {
   const [selectedVacanteId, setSelectedVacanteId] = useState<string>('')
   const [selectedProceso, setSelectedProceso] = useState<ProcesoSeleccionDetail | null>(null)
   const [selectedPostulacion, setSelectedPostulacion] = useState<PostulacionDetail | null>(null)
+  const [paqueteVinculacion, setPaqueteVinculacion] = useState<any | null>(null)
 
   // Modales de Acción de Estado
   const [actionModal, setActionModal] = useState<{
@@ -323,6 +324,15 @@ export default function ReclutamientoView() {
       if (selectedPostulacion) verDetallePostulacion(selectedPostulacion.id)
     } catch (err: any) {
       alert(errMsg(err, 'Error al reabrir postulación'))
+    }
+  }
+
+  const handleIniciarVinculacion = async (post: PostulacionListItem) => {
+    try {
+      const paquete = await reclutamientoService.iniciarVinculacion(post.id)
+      setPaqueteVinculacion(paquete)
+    } catch (err: any) {
+      alert(errMsg(err, 'No se pudo iniciar la vinculación.'))
     }
   }
 
@@ -945,6 +955,17 @@ export default function ReclutamientoView() {
                                   <RefreshCw className="w-3.5 h-3.5 inline mr-1" />
                                   Reabrir
                                 </button>
+                              )}
+
+                              {post.estado === 'seleccionado' && (
+                                <Button
+                                  variant="primary"
+                                  className="text-xs py-1 px-2.5 bg-primary-500 hover:bg-primary-600 flex items-center gap-1"
+                                  onClick={() => handleIniciarVinculacion(post)}
+                                >
+                                  <UserCheck className="w-3.5 h-3.5" />
+                                  Iniciar vinculación
+                                </Button>
                               )}
                             </div>
                           </td>
@@ -1936,6 +1957,74 @@ export default function ReclutamientoView() {
             </div>
           </Card>
         </div>
+      )}
+
+      {/* ───────────────────────────────────────────────────────── */}
+      {/* MODAL: PAQUETE DE VINCULACIÓN (Hand-off)                  */}
+      {/* ───────────────────────────────────────────────────────── */}
+      {paqueteVinculacion && (
+        <Modal
+          open={true}
+          onClose={() => setPaqueteVinculacion(null)}
+          title="Paquete de Vinculación — Hand-off a Gestión Humana"
+          maxWidth="42rem"
+        >
+          <div className="space-y-4 text-xs">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="bg-slate-50 rounded-lg p-3">
+                <div className="font-bold text-slate-800 mb-1">Candidato</div>
+                <div className="text-slate-700">{paqueteVinculacion.candidato?.nombres} {paqueteVinculacion.candidato?.apellidos}</div>
+                <div className="text-slate-500 font-mono">{paqueteVinculacion.candidato?.tipo_documento} {paqueteVinculacion.candidato?.documento}</div>
+                <div className="text-slate-500">{paqueteVinculacion.candidato?.email}</div>
+              </div>
+              <div className="bg-slate-50 rounded-lg p-3">
+                <div className="font-bold text-slate-800 mb-1">Cargo propuesto</div>
+                <div className="text-slate-700">{paqueteVinculacion.cargo_propuesto?.nombre_cargo}</div>
+                <div className="text-slate-500 font-mono">{paqueteVinculacion.cargo_propuesto?.codigo} · {paqueteVinculacion.cargo_propuesto?.area}</div>
+              </div>
+              <div className="bg-slate-50 rounded-lg p-3 sm:col-span-2">
+                <div className="font-bold text-slate-800 mb-1">Condiciones laborales</div>
+                <div className="text-slate-600">Sede: {paqueteVinculacion.condiciones_laborales?.sede_nombre || '—'} · Modalidad: {paqueteVinculacion.condiciones_laborales?.modalidad} · Contrato: {paqueteVinculacion.condiciones_laborales?.tipo_contrato}</div>
+                <div className="text-slate-600">Salario: {paqueteVinculacion.condiciones_laborales?.rango_salarial}</div>
+              </div>
+            </div>
+
+            <div>
+              <div className="font-bold text-slate-800 mb-2">Checklist de ingreso</div>
+              <ul className="space-y-1">
+                {(paqueteVinculacion.checklist_ingreso || []).map((c: any, i: number) => (
+                  <li key={i} className="flex items-center gap-2 text-slate-700">
+                    <span className="w-2 h-2 rounded-full bg-slate-300" /> {c.item}
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            {!!(paqueteVinculacion.documentos_soporte || []).length && (
+              <div>
+                <div className="font-bold text-slate-800 mb-2">Documentos ({paqueteVinculacion.documentos_soporte.length})</div>
+                <ul className="space-y-1">
+                  {paqueteVinculacion.documentos_soporte.map((d: any, i: number) => (
+                    <li key={i} className="flex items-center justify-between text-slate-700">
+                      <span>{d.tipo}: {d.nombre}</span>
+                      {d.url && (
+                        <a href={d.url} target="_blank" rel="noopener noreferrer" className="text-primary-500 hover:underline">Ver</a>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            <p className="text-[11px] text-slate-400 border-t pt-2">
+              Este paquete es el hand-off hacia el módulo de Gestión Humana / Contratación.
+            </p>
+
+            <div className="flex justify-end">
+              <Button variant="secondary" className="text-xs" onClick={() => setPaqueteVinculacion(null)}>Cerrar</Button>
+            </div>
+          </div>
+        </Modal>
       )}
 
       {/* ───────────────────────────────────────────────────────── */}

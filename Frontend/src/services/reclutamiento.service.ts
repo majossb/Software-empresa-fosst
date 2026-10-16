@@ -177,6 +177,10 @@ export const reclutamientoService = {
     return apiClient.post<PostulacionDetail>(`/reclutamiento/postulaciones/${id}/reabrir/`, payload)
   },
 
+  iniciarVinculacion: (id: string) => {
+    return apiClient.post<any>(`/reclutamiento/postulaciones/${id}/iniciar-vinculacion/`, {})
+  },
+
   // ── 6. Portal Público del Candidato ─────────────────────────
   getVacantesPublicas: (params?: { search?: string; modalidad?: string; empresa_id?: string }) => {
     const query = new URLSearchParams()

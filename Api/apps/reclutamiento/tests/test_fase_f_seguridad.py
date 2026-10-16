@@ -239,6 +239,28 @@ class FaseFVacanteEtapasTestCase(APITestCase):
         self.assertFalse(proceso.requiere_validacion_documental)
 
 
+class FaseFRetiroSinMotivoTestCase(APITestCase):
+    """El candidato puede retirar su candidatura sin indicar motivo (se registra uno por defecto)."""
+
+    def test_retiro_sin_motivo(self):
+        empresa = _crear_empresa("900000051-1", "Empresa Retiro")
+        postulacion = _crear_contexto_postulacion(
+            empresa, "R1", estado=Postulacion.Estado.EN_ENTREVISTA,
+        )
+        token = generar_token_acceso_candidato(candidato=postulacion.candidato, enviar_email=False)
+
+        res = self.client.post(
+            f"/api/reclutamiento/portal/mis-postulaciones/{postulacion.id}/retirar/",
+            {},
+            format="json",
+            HTTP_AUTHORIZATION=f"Bearer {token.token}",
+        )
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        postulacion.refresh_from_db()
+        self.assertEqual(postulacion.estado, Postulacion.Estado.RETIRO_CANDIDATURA)
+        self.assertTrue(postulacion.motivo_cierre)
+
+
 class FaseFFlujoCompletoTestCase(APITestCase):
     """Flujo end-to-end: vacante (sin etapas) -> postular -> preseleccionar -> seleccionar -> cubierta."""
 

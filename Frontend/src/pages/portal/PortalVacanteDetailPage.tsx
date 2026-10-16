@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import { reclutamientoService } from '@/services/reclutamiento.service'
 import { VacantePublicaDetail } from '@/types/reclutamiento.types'
+import { PortalToast, PortalFeedback } from './portal.ui'
 import {
   Briefcase, MapPin, Building2, CheckCircle2,
   ArrowLeft, Send, Check, FileText,
@@ -25,6 +26,7 @@ export default function PortalVacanteDetailPage() {
   // Archivo Hoja de Vida
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [savedResumeName, setSavedResumeName] = useState<string | null>(null)
+  const [feedback, setFeedback] = useState<PortalFeedback>(null)
 
   const [successData, setSuccessData] = useState<{
     codigo_otp: string
@@ -142,7 +144,7 @@ export default function PortalVacanteDetailPage() {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0]
       if (file.size > 15 * 1024 * 1024) {
-        alert('El archivo no debe superar 15 MB.')
+        setFeedback({ type: 'error', text: 'El archivo no debe superar 15 MB.' })
         return
       }
       setSelectedFile(file)
@@ -159,7 +161,7 @@ export default function PortalVacanteDetailPage() {
         token_acceso: res.token_acceso,
       })
     } catch (err: any) {
-      alert(err.message || 'Error en postulación rápida.')
+      setFeedback({ type: 'error', text: err.message || 'Error en postulación rápida.' })
     } finally {
       setQuickApplying(false)
     }
@@ -168,7 +170,7 @@ export default function PortalVacanteDetailPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!form.autoriza_tratamiento_datos) {
-      alert('Debe autorizar el tratamiento de datos personales (Habeas Data Ley 1581 de 2012).')
+      setFeedback({ type: 'error', text: 'Debe autorizar el tratamiento de datos personales (Habeas Data Ley 1581 de 2012).' })
       return
     }
     if (!slugOrId) return
@@ -219,7 +221,7 @@ export default function PortalVacanteDetailPage() {
         token_acceso: res.token_acceso,
       })
     } catch (err: any) {
-      alert(err.message || 'Ocurrió un error al enviar su postulación.')
+      setFeedback({ type: 'error', text: err.message || 'Ocurrió un error al enviar su postulación.' })
     } finally {
       setSubmitting(false)
     }
@@ -246,6 +248,8 @@ export default function PortalVacanteDetailPage() {
 
   return (
     <div className="min-h-screen bg-slate-900 text-slate-100 py-10 px-4">
+      <PortalToast feedback={feedback} onClose={() => setFeedback(null)} />
+
       <div className="max-w-4xl mx-auto space-y-8">
         {/* ── Botón Volver ──────────────────────────────────────── */}
         <Link
