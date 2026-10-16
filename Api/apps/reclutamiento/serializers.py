@@ -395,6 +395,10 @@ class VacanteDetailSerializer(serializers.ModelSerializer):
 class VacanteCreateUpdateSerializer(serializers.ModelSerializer):
     auto_crear_proceso = serializers.BooleanField(write_only=True, default=True)
     responsable_rh_id = serializers.UUIDField(write_only=True, required=False, allow_null=True)
+    # Configuración de etapas obligatorias del proceso (RN-R03)
+    requiere_entrevista = serializers.BooleanField(write_only=True, default=True)
+    requiere_evaluacion = serializers.BooleanField(write_only=True, default=True)
+    requiere_validacion_documental = serializers.BooleanField(write_only=True, default=True)
 
     class Meta:
         model = Vacante
@@ -416,12 +420,18 @@ class VacanteCreateUpdateSerializer(serializers.ModelSerializer):
             "publicada_en_portal",
             "auto_crear_proceso",
             "responsable_rh_id",
+            "requiere_entrevista",
+            "requiere_evaluacion",
+            "requiere_validacion_documental",
         ]
         read_only_fields = ["id"]
 
     def create(self, validated_data):
         auto_crear_proceso = validated_data.pop("auto_crear_proceso", True)
         responsable_rh_id = validated_data.pop("responsable_rh_id", None)
+        requiere_entrevista = validated_data.pop("requiere_entrevista", True)
+        requiere_evaluacion = validated_data.pop("requiere_evaluacion", True)
+        requiere_validacion = validated_data.pop("requiere_validacion_documental", True)
         vacante = Vacante.objects.create(**validated_data)
 
         if auto_crear_proceso:
@@ -436,9 +446,9 @@ class VacanteCreateUpdateSerializer(serializers.ModelSerializer):
                 empresa=vacante.empresa,
                 vacante=vacante,
                 responsable_rh_id=responsable_rh_id,
-                requiere_entrevista=True,
-                requiere_evaluacion=True,
-                requiere_validacion_documental=True,
+                requiere_entrevista=requiere_entrevista,
+                requiere_evaluacion=requiere_evaluacion,
+                requiere_validacion_documental=requiere_validacion,
                 requisitos_obligatorios=requisitos_obligatorios,
             )
         return vacante

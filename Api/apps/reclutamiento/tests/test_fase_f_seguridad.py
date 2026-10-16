@@ -204,6 +204,41 @@ class FaseFDocumentoUploadTestCase(APITestCase):
         self.assertEqual(res.status_code, status.HTTP_404_NOT_FOUND)
 
 
+class FaseFVacanteEtapasTestCase(APITestCase):
+    """Al crear la vacante se configuran las etapas obligatorias del proceso."""
+
+    def setUp(self):
+        self.empresa = _crear_empresa("900000031-1", "Empresa Etapas")
+        self.user = Usuario.objects.create_user(
+            username="etapas", email="etapas@a.com", password="Password123!",
+            rol=UserRole.RESPONSABLE, empresa=self.empresa, activo=True, is_active=True,
+        )
+        self.cargo = PerfilCargo.objects.create(
+            empresa=self.empresa, codigo="PC-ET", nombre_cargo="Auxiliar",
+            educacion="Bachiller", experiencia="1 año",
+        )
+        self.client.force_authenticate(user=self.user)
+
+    def test_crear_vacante_configura_etapas(self):
+        res = self.client.post(
+            "/api/reclutamiento/vacantes/",
+            {
+                "perfil_cargo": str(self.cargo.id),
+                "titulo": "Auxiliar Administrativo",
+                "numero_cupos": 1,
+                "requiere_entrevista": True,
+                "requiere_evaluacion": False,
+                "requiere_validacion_documental": False,
+            },
+            format="json",
+        )
+        self.assertEqual(res.status_code, status.HTTP_201_CREATED)
+        proceso = ProcesoSeleccion.objects.get(vacante_id=res.data["id"])
+        self.assertTrue(proceso.requiere_entrevista)
+        self.assertFalse(proceso.requiere_evaluacion)
+        self.assertFalse(proceso.requiere_validacion_documental)
+
+
 class FaseFPortalPerfilTestCase(APITestCase):
     """El candidato autenticado puede actualizar su perfil desde el portal."""
 

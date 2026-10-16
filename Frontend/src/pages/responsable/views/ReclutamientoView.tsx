@@ -76,6 +76,9 @@ export default function ReclutamientoView() {
     rango_salarial_max: '',
     mostrar_salario_publico: true,
     auto_crear_proceso: true,
+    requiere_entrevista: true,
+    requiere_evaluacion: true,
+    requiere_validacion_documental: true,
   })
 
   // ── Tab 3: Procesos de Selección & Pipeline ───────────────────
@@ -992,6 +995,22 @@ export default function ReclutamientoView() {
                         Reactivar
                       </button>
                     )}
+                    {['abierta', 'pausada'].includes(v.estado) && (
+                      <button
+                        onClick={async () => {
+                          if (!confirm('¿Cerrar esta vacante? No admitirá más postulaciones.')) return
+                          try {
+                            await reclutamientoService.cerrarVacante(v.id)
+                            cargarDatos()
+                          } catch (err: any) {
+                            alert(errMsg(err, 'No se pudo cerrar la vacante.'))
+                          }
+                        }}
+                        className="text-xs px-2.5 py-1 rounded bg-rose-50 text-rose-700 hover:bg-rose-100 font-medium"
+                      >
+                        Cerrar
+                      </button>
+                    )}
                   </div>
 
                   <Button
@@ -1753,6 +1772,83 @@ export default function ReclutamientoView() {
                     onChange={(e) => setNewVacanteData(p => ({ ...p, numero_cupos: Number(e.target.value) }))}
                     className="w-full p-2 border rounded-lg"
                   />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-700 font-medium mb-1">Tipo de Contrato:</label>
+                  <select
+                    value={newVacanteData.tipo_contrato}
+                    onChange={(e) => setNewVacanteData(p => ({ ...p, tipo_contrato: e.target.value }))}
+                    className="w-full p-2 border rounded-lg"
+                  >
+                    <option value="Termino Indefinido">Término Indefinido</option>
+                    <option value="Termino Fijo">Término Fijo</option>
+                    <option value="Obra o Labor">Obra o Labor</option>
+                    <option value="Prestación de Servicios">Prestación de Servicios</option>
+                    <option value="Aprendizaje">Aprendizaje</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-slate-700 font-medium mb-1">Salario (mín / máx):</label>
+                  <div className="flex gap-2">
+                    <input
+                      type="number" min="0" placeholder="Mín"
+                      value={newVacanteData.rango_salarial_min}
+                      onChange={(e) => setNewVacanteData(p => ({ ...p, rango_salarial_min: e.target.value }))}
+                      className="w-full p-2 border rounded-lg"
+                    />
+                    <input
+                      type="number" min="0" placeholder="Máx"
+                      value={newVacanteData.rango_salarial_max}
+                      onChange={(e) => setNewVacanteData(p => ({ ...p, rango_salarial_max: e.target.value }))}
+                      className="w-full p-2 border rounded-lg"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={newVacanteData.mostrar_salario_publico}
+                  onChange={(e) => setNewVacanteData(p => ({ ...p, mostrar_salario_publico: e.target.checked }))}
+                  className="rounded text-primary-500"
+                />
+                <span>Mostrar salario en el portal público</span>
+              </label>
+
+              <div className="pt-2 border-t">
+                <label className="block text-slate-700 font-medium mb-1.5">Etapas obligatorias del proceso:</label>
+                <div className="flex flex-wrap gap-4">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={newVacanteData.requiere_entrevista}
+                      onChange={(e) => setNewVacanteData(p => ({ ...p, requiere_entrevista: e.target.checked }))}
+                      className="rounded text-primary-500"
+                    />
+                    <span>Entrevista</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={newVacanteData.requiere_evaluacion}
+                      onChange={(e) => setNewVacanteData(p => ({ ...p, requiere_evaluacion: e.target.checked }))}
+                      className="rounded text-primary-500"
+                    />
+                    <span>Evaluación</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={newVacanteData.requiere_validacion_documental}
+                      onChange={(e) => setNewVacanteData(p => ({ ...p, requiere_validacion_documental: e.target.checked }))}
+                      className="rounded text-primary-500"
+                    />
+                    <span>Validación documental</span>
+                  </label>
                 </div>
               </div>
 
