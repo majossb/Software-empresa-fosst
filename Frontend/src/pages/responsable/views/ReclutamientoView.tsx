@@ -92,6 +92,13 @@ export default function ReclutamientoView() {
     experiencia: true,
     formacion: true,
     puntuacion: 90,
+    es_excepcion: false,
+    justificacion_excepcion: '',
+  })
+  const [seleccionarForm, setSeleccionarForm] = useState({
+    notas_finales: '',
+    es_excepcion: false,
+    justificacion_excepcion: '',
   })
   const [entrevistaForm, setEntrevistaForm] = useState({
     tipo_entrevista: 'tecnica',
@@ -190,8 +197,14 @@ export default function ReclutamientoView() {
   }
 
   // ── Handlers de Acciones de Estado ───────────────────────────
+  const errMsg = (err: any, fallback: string) => err?.friendlyMessage || err?.message || fallback
+
   const handlePreseleccionar = async () => {
     if (!actionModal.postulacion) return
+    if (preseleccionarForm.es_excepcion && !preseleccionarForm.justificacion_excepcion.trim()) {
+      alert('Debe justificar la excepción (RN-R09).')
+      return
+    }
     try {
       await reclutamientoService.preseleccionarPostulacion(actionModal.postulacion.id, {
         calificacion_requisitos: {
@@ -199,12 +212,14 @@ export default function ReclutamientoView() {
           formacion_academica: preseleccionarForm.formacion,
         },
         puntuacion: Number(preseleccionarForm.puntuacion),
+        es_excepcion: preseleccionarForm.es_excepcion,
+        justificacion_excepcion: preseleccionarForm.justificacion_excepcion,
       })
       setActionModal({ type: null })
       if (selectedProceso) cargarProceso(selectedProceso.id)
       if (selectedPostulacion) verDetallePostulacion(selectedPostulacion.id)
     } catch (err: any) {
-      alert(err.message || 'Error al preseleccionar')
+      alert(errMsg(err, 'Error al preseleccionar'))
     }
   }
 
@@ -220,7 +235,7 @@ export default function ReclutamientoView() {
       if (selectedProceso) cargarProceso(selectedProceso.id)
       if (selectedPostulacion) verDetallePostulacion(selectedPostulacion.id)
     } catch (err: any) {
-      alert(err.message || 'Error al registrar entrevista')
+      alert(errMsg(err, 'Error al registrar entrevista'))
     }
   }
 
@@ -237,7 +252,7 @@ export default function ReclutamientoView() {
       if (selectedProceso) cargarProceso(selectedProceso.id)
       if (selectedPostulacion) verDetallePostulacion(selectedPostulacion.id)
     } catch (err: any) {
-      alert(err.message || 'Error al registrar evaluación')
+      alert(errMsg(err, 'Error al registrar evaluación'))
     }
   }
 
@@ -249,21 +264,27 @@ export default function ReclutamientoView() {
       if (selectedProceso) cargarProceso(selectedProceso.id)
       if (selectedPostulacion) verDetallePostulacion(selectedPostulacion.id)
     } catch (err: any) {
-      alert(err.message || 'Error al registrar validación')
+      alert(errMsg(err, 'Error al registrar validación'))
     }
   }
 
   const handleSeleccionar = async () => {
     if (!actionModal.postulacion) return
+    if (seleccionarForm.es_excepcion && !seleccionarForm.justificacion_excepcion.trim()) {
+      alert('Debe justificar la excepción (RN-R09).')
+      return
+    }
     try {
       await reclutamientoService.seleccionarPostulacion(actionModal.postulacion.id, {
-        notas_finales: 'Seleccionado conforme por el comité de contratación.',
+        notas_finales: seleccionarForm.notas_finales || 'Seleccionado conforme por el comité de contratación.',
+        es_excepcion: seleccionarForm.es_excepcion,
+        justificacion_excepcion: seleccionarForm.justificacion_excepcion,
       })
       setActionModal({ type: null })
       if (selectedProceso) cargarProceso(selectedProceso.id)
       if (selectedPostulacion) verDetallePostulacion(selectedPostulacion.id)
     } catch (err: any) {
-      alert(err.message || 'Error al seleccionar candidato')
+      alert(errMsg(err, 'Error al seleccionar candidato'))
     }
   }
 
@@ -279,7 +300,7 @@ export default function ReclutamientoView() {
       if (selectedProceso) cargarProceso(selectedProceso.id)
       if (selectedPostulacion) verDetallePostulacion(selectedPostulacion.id)
     } catch (err: any) {
-      alert(err.message || 'Error al cerrar postulación')
+      alert(errMsg(err, 'Error al cerrar postulación'))
     }
   }
 
@@ -295,7 +316,7 @@ export default function ReclutamientoView() {
       if (selectedProceso) cargarProceso(selectedProceso.id)
       if (selectedPostulacion) verDetallePostulacion(selectedPostulacion.id)
     } catch (err: any) {
-      alert(err.message || 'Error al reabrir postulación')
+      alert(errMsg(err, 'Error al reabrir postulación'))
     }
   }
 
@@ -805,24 +826,30 @@ export default function ReclutamientoView() {
 
                               {['preseleccionado', 'en_entrevista', 'en_evaluacion', 'en_validacion'].includes(post.estado) && (
                                 <>
-                                  <button
-                                    onClick={() => setActionModal({ type: 'entrevista', postulacion: post })}
-                                    className="px-2 py-1 text-xs rounded bg-amber-50 text-amber-900 hover:bg-amber-100 font-medium"
-                                  >
-                                    + Entrevista
-                                  </button>
-                                  <button
-                                    onClick={() => setActionModal({ type: 'evaluacion', postulacion: post })}
-                                    className="px-2 py-1 text-xs rounded bg-amber-50 text-amber-700 hover:bg-amber-100 font-medium"
-                                  >
-                                    + Evaluación
-                                  </button>
-                                  <button
-                                    onClick={() => setActionModal({ type: 'validacion', postulacion: post })}
-                                    className="px-2 py-1 text-xs rounded bg-primary-50 text-primary-500 hover:bg-primary-100 font-medium"
-                                  >
-                                    + Validación
-                                  </button>
+                                  {selectedProceso?.requiere_entrevista && post.semaforo_etapas?.entrevista?.estado !== 'completada' && (
+                                    <button
+                                      onClick={() => setActionModal({ type: 'entrevista', postulacion: post })}
+                                      className="px-2 py-1 text-xs rounded bg-amber-50 text-amber-900 hover:bg-amber-100 font-medium"
+                                    >
+                                      + Entrevista
+                                    </button>
+                                  )}
+                                  {selectedProceso?.requiere_evaluacion && post.semaforo_etapas?.evaluacion?.estado !== 'completada' && (
+                                    <button
+                                      onClick={() => setActionModal({ type: 'evaluacion', postulacion: post })}
+                                      className="px-2 py-1 text-xs rounded bg-amber-50 text-amber-700 hover:bg-amber-100 font-medium"
+                                    >
+                                      + Evaluación
+                                    </button>
+                                  )}
+                                  {selectedProceso?.requiere_validacion_documental && post.semaforo_etapas?.validacion_documental?.estado !== 'completada' && (
+                                    <button
+                                      onClick={() => setActionModal({ type: 'validacion', postulacion: post })}
+                                      className="px-2 py-1 text-xs rounded bg-primary-50 text-primary-500 hover:bg-primary-100 font-medium"
+                                    >
+                                      + Validación
+                                    </button>
+                                  )}
                                   <Button
                                     variant="primary"
                                     className="text-xs py-1 px-2.5 bg-emerald-600 hover:bg-emerald-700"
@@ -1289,6 +1316,27 @@ export default function ReclutamientoView() {
                   className="w-full p-2 border rounded-lg"
                 />
               </div>
+
+              <div className="pt-2 border-t">
+                <label className="flex items-center gap-2 cursor-pointer text-amber-800">
+                  <input
+                    type="checkbox"
+                    checked={preseleccionarForm.es_excepcion}
+                    onChange={(e) => setPreseleccionarForm(p => ({ ...p, es_excepcion: e.target.checked }))}
+                    className="rounded text-amber-600"
+                  />
+                  <span className="font-medium">Autorizar por excepción (RN-R09)</span>
+                </label>
+                {preseleccionarForm.es_excepcion && (
+                  <textarea
+                    rows={2}
+                    className="w-full mt-2 p-2 border rounded-lg"
+                    placeholder="Justificación obligatoria de la excepción..."
+                    value={preseleccionarForm.justificacion_excepcion}
+                    onChange={(e) => setPreseleccionarForm(p => ({ ...p, justificacion_excepcion: e.target.value }))}
+                  />
+                )}
+              </div>
             </div>
 
             <div className="flex justify-end gap-2 pt-2">
@@ -1495,6 +1543,39 @@ export default function ReclutamientoView() {
               ¿Desea formalizar la selección de <strong>{actionModal.postulacion.candidato_nombre}</strong> para esta vacante?
               Al completar los cupos disponibles, las demás candidaturas se cerrarán automáticamente.
             </p>
+
+            <div className="space-y-2 text-xs">
+              <div>
+                <label className="block text-slate-700 font-medium mb-1">Notas finales (opcional):</label>
+                <textarea
+                  rows={2}
+                  className="w-full p-2 border rounded-lg"
+                  value={seleccionarForm.notas_finales}
+                  onChange={(e) => setSeleccionarForm(p => ({ ...p, notas_finales: e.target.value }))}
+                />
+              </div>
+
+              <div className="pt-2 border-t">
+                <label className="flex items-center gap-2 cursor-pointer text-amber-800">
+                  <input
+                    type="checkbox"
+                    checked={seleccionarForm.es_excepcion}
+                    onChange={(e) => setSeleccionarForm(p => ({ ...p, es_excepcion: e.target.checked }))}
+                    className="rounded text-amber-600"
+                  />
+                  <span className="font-medium">Seleccionar por excepción (RN-R09)</span>
+                </label>
+                {seleccionarForm.es_excepcion && (
+                  <textarea
+                    rows={2}
+                    className="w-full mt-2 p-2 border rounded-lg"
+                    placeholder="Justificación obligatoria de la excepción..."
+                    value={seleccionarForm.justificacion_excepcion}
+                    onChange={(e) => setSeleccionarForm(p => ({ ...p, justificacion_excepcion: e.target.value }))}
+                  />
+                )}
+              </div>
+            </div>
 
             <div className="flex justify-end gap-2 pt-2">
               <Button variant="secondary" className="text-xs" onClick={() => setActionModal({ type: null })}>
