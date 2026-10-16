@@ -48,6 +48,10 @@ export default function ReclutamientoView() {
   })
   const [editingCandidato, setEditingCandidato] = useState(false)
   const [editCandidatoData, setEditCandidatoData] = useState<any>({})
+  const [docUpload, setDocUpload] = useState<{ tipo_documento: string; file: File | null }>({
+    tipo_documento: 'hoja_de_vida',
+    file: null,
+  })
 
   // ── Tab 4: Fuentes de Reclutamiento ──────────────────────────
   const [fuentes, setFuentes] = useState<FuenteReclutamiento[]>([])
@@ -432,6 +436,25 @@ export default function ReclutamientoView() {
       cargarDatos()
     } catch (err: any) {
       alert(err.message || 'Error al guardar el candidato')
+    }
+  }
+
+  const handleSubirDocumento = async () => {
+    if (!selectedCandidato || !docUpload.file) {
+      alert('Selecciona un archivo para subir.')
+      return
+    }
+    try {
+      const fd = new FormData()
+      fd.append('archivo', docUpload.file)
+      fd.append('tipo_documento', docUpload.tipo_documento)
+      await reclutamientoService.subirDocumentoCandidato(selectedCandidato.id, fd)
+      const refreshed = await reclutamientoService.getCandidatoById(selectedCandidato.id)
+      setSelectedCandidato(refreshed)
+      setDocUpload({ tipo_documento: 'hoja_de_vida', file: null })
+      cargarDatos()
+    } catch (err: any) {
+      alert(err?.friendlyMessage || err?.message || 'No se pudo subir el documento.')
     }
   }
 
@@ -1866,6 +1889,37 @@ export default function ReclutamientoView() {
                   ) : (
                     <div className="text-slate-400">Sin documentos cargados.</div>
                   )}
+
+                  <div className="mt-3 flex flex-col sm:flex-row gap-2 sm:items-center bg-white border border-dashed border-slate-300 rounded-lg p-3">
+                    <select
+                      value={docUpload.tipo_documento}
+                      onChange={(e) => setDocUpload((p) => ({ ...p, tipo_documento: e.target.value }))}
+                      className="p-2 border rounded-lg"
+                    >
+                      <option value="hoja_de_vida">Hoja de Vida</option>
+                      <option value="certificacion_laboral">Certificación Laboral</option>
+                      <option value="certificacion_academica">Certificación Académica</option>
+                      <option value="licencia_conduccion">Licencia de Conducción</option>
+                      <option value="licencia_sst">Licencia SST</option>
+                      <option value="certificacion_alturas">Certificación Alturas</option>
+                      <option value="cedula">Documento de Identidad</option>
+                      <option value="otro">Otro</option>
+                    </select>
+                    <input
+                      type="file"
+                      accept=".pdf,.jpg,.jpeg,.png,.webp,.docx,.xlsx,.csv"
+                      onChange={(e) => setDocUpload((p) => ({ ...p, file: e.target.files?.[0] || null }))}
+                      className="flex-1 text-slate-600"
+                    />
+                    <Button
+                      variant="primary"
+                      className="text-xs"
+                      onClick={handleSubirDocumento}
+                      disabled={!docUpload.file}
+                    >
+                      Subir Documento
+                    </Button>
+                  </div>
                 </div>
 
                 {/* Historial de postulaciones */}

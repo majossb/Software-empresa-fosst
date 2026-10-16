@@ -14,6 +14,7 @@ from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.parsers import MultiPartParser, FormParser
 
 from apps.common.mixins import EmpresaScopedViewSet
 from apps.common.permissions import IsRol, IsRolParaEscritura
@@ -211,6 +212,62 @@ class CandidatoViewSet(EmpresaScopedViewSet):
             archivo_id=archivo_id,
             tipo_documento=tipo_doc,
             nombre_descriptivo=nombre_desc,
+        )
+        return Response(CandidatoDocumentoSerializer(doc).data, status=status.HTTP_201_CREATED)
+
+    @action(
+        detail=True,
+        methods=["post"],
+        url_path="subir-documento",
+        parser_classes=[MultiPartParser, FormParser],
+    )
+    def subir_documento(self, request, pk=None):
+        """
+        Sube un documento del candidato (hoja de vida, certificación, licencia, etc.)
+        al almacenamiento central (S3/MinIO) con validación de MIME/tamaño y hash SHA-256.
+        multipart/form-data: archivo, tipo_documento, nombre_descriptivo.
+        """
+        from django.core.exceptions import ValidationError as DjangoValidationError
+        from apps.common.storage import validate_and_process_file
+
+        candidato = self.get_object()
+        archivo_file = request.FILES.get("archivo")
+        if not archivo_file:
+            return Response(
+                {"detail": "El archivo es obligatorio."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        tipo_doc = request.data.get("tipo_documento", CandidatoDocumento.TipoDocumento.HOJA_DE_VIDA)
+        if tipo_doc not in dict(CandidatoDocumento.TipoDocumento.choices):
+            return Response(
+                {"detail": "Tipo de documento inválido."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            meta = validate_and_process_file(
+                archivo_file, folder="candidatos", filename=archivo_file.name
+            )
+        except DjangoValidationError as exc:
+            detail = getattr(exc, "message", None) or getattr(exc, "detail", None) or str(exc)
+            return Response({"detail": detail}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        archivo = Archivo.objects.create(
+            nombre=meta["original_name"],
+            url=meta["url"] if isinstance(meta["url"], str) else "",
+            tipo_mime=meta["mime_type"],
+            tamanio_kb=round(meta["size_bytes"] / 1024),
+            subido_por=getattr(request.user, "email", "") or getattr(request.user, "username", ""),
+            sha256_hash=meta["sha256_hash"],
+        )
+        doc = CandidatoDocumento.objects.create(
+            candidato=candidato,
+            archivo=archivo,
+            tipo_documento=tipo_doc,
+            nombre_descriptivo=request.data.get("nombre_descriptivo") or meta["original_name"],
         )
         return Response(CandidatoDocumentoSerializer(doc).data, status=status.HTTP_201_CREATED)
 

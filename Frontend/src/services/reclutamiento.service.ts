@@ -6,6 +6,7 @@ import { apiClient } from './api.client'
 import {
   CandidatoListItem,
   CandidatoDetail,
+  CandidatoDocumento,
   VacanteListItem,
   VacanteDetail,
   ProcesoSeleccionDetail,
@@ -49,6 +50,10 @@ export const reclutamientoService = {
 
   vincularDocumentoCandidato: (candidatoId: string, payload: { archivo_id: string; tipo_documento: string; nombre_descriptivo?: string }) => {
     return apiClient.post(`/reclutamiento/candidatos/${candidatoId}/vincular-documento/`, payload)
+  },
+
+  subirDocumentoCandidato: (candidatoId: string, formData: FormData) => {
+    return apiClient.post<CandidatoDocumento>(`/reclutamiento/candidatos/${candidatoId}/subir-documento/`, formData)
   },
 
   // ── 2. Fuentes de Reclutamiento ──────────────────────────────

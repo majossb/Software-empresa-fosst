@@ -6,6 +6,10 @@ Cubre:
 - Autenticación del portal: un token ya usado no debe autenticar.
 - RN-R10: un sub-recurso (entrevista) no puede enlazarse a una postulación de otra empresa.
 """
+import tempfile
+
+from django.test import override_settings
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.utils import timezone
 from rest_framework.test import APITestCase, APIClient
 from rest_framework import status
@@ -16,10 +20,13 @@ from apps.organizacion.models import Sede
 from apps.perfilcargo.models import PerfilCargo
 from apps.reclutamiento.models import (
     Candidato,
+    CandidatoDocumento,
     Vacante,
     ProcesoSeleccion,
     Postulacion,
 )
+
+TEMP_MEDIA_DIR = tempfile.mkdtemp()
 from apps.reclutamiento.services.postulacion import preseleccionar_candidato
 from apps.reclutamiento.services.transiciones import RequisitoIncumplidoError
 from apps.reclutamiento.services.portal import generar_token_acceso_candidato
@@ -135,3 +142,63 @@ class FaseFSeguridadTestCase(APITestCase):
             format="json",
         )
         self.assertEqual(res.status_code, status.HTTP_201_CREATED)
+
+
+def _pdf(nombre="cv.pdf"):
+    return SimpleUploadedFile(nombre, b"%PDF-1.4 contenido de prueba", content_type="application/pdf")
+
+
+@override_settings(
+    STORAGES={
+        "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+        "staticfiles": {"BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"},
+    },
+    DEFAULT_FILE_STORAGE="django.core.files.storage.FileSystemStorage",
+    MEDIA_ROOT=TEMP_MEDIA_DIR,
+)
+class FaseFDocumentoUploadTestCase(APITestCase):
+    def setUp(self):
+        self.empresa_a = _crear_empresa("900000011-1", "Empresa Doc A")
+        self.empresa_b = _crear_empresa("900000012-2", "Empresa Doc B")
+        self.user_a = Usuario.objects.create_user(
+            username="doc_a", email="doc.a@a.com", password="Password123!",
+            rol=UserRole.RESPONSABLE, empresa=self.empresa_a, activo=True, is_active=True,
+        )
+        self.cand_a = Candidato.objects.create(
+            empresa=self.empresa_a, documento="D1", nombres="A", apellidos="Uno", email="a.uno@mail.com",
+        )
+        self.cand_b = Candidato.objects.create(
+            empresa=self.empresa_b, documento="D2", nombres="B", apellidos="Dos", email="b.dos@mail.com",
+        )
+        self.client = APIClient()
+
+    def test_subir_documento_ok_guarda_hash(self):
+        self.client.force_authenticate(user=self.user_a)
+        res = self.client.post(
+            f"/api/reclutamiento/candidatos/{self.cand_a.id}/subir-documento/",
+            {"archivo": _pdf(), "tipo_documento": "hoja_de_vida"},
+            format="multipart",
+        )
+        self.assertEqual(res.status_code, status.HTTP_201_CREATED)
+        doc = CandidatoDocumento.objects.get(candidato=self.cand_a)
+        self.assertTrue(doc.archivo.sha256_hash)
+        self.assertEqual(doc.archivo.tipo_mime, "application/pdf")
+
+    def test_subir_documento_mime_invalido(self):
+        self.client.force_authenticate(user=self.user_a)
+        archivo = SimpleUploadedFile("nota.txt", b"texto plano", content_type="text/plain")
+        res = self.client.post(
+            f"/api/reclutamiento/candidatos/{self.cand_a.id}/subir-documento/",
+            {"archivo": archivo, "tipo_documento": "otro"},
+            format="multipart",
+        )
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_subir_documento_cross_tenant_404(self):
+        self.client.force_authenticate(user=self.user_a)
+        res = self.client.post(
+            f"/api/reclutamiento/candidatos/{self.cand_b.id}/subir-documento/",
+            {"archivo": _pdf(), "tipo_documento": "hoja_de_vida"},
+            format="multipart",
+        )
+        self.assertEqual(res.status_code, status.HTTP_404_NOT_FOUND)
