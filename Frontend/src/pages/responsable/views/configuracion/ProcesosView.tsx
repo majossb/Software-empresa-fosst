@@ -255,17 +255,22 @@ export default function ProcesosView() {
       }
       queryClient.invalidateQueries({ queryKey: ['modulo0'] })
       setShowIaModal(false)
+    },
+    onError: (err: any) => {
+      setShowIaModal(false)
+      setErrorMsg(err?.friendlyMessage || err?.message || 'No se pudieron generar las sugerencias con IA.')
     }
   })
 
   const importTemplateMutation = useMutation({
     mutationFn: (templateKey: string) => modulo0Service.importarPlantilla(templateKey),
     onSuccess: () => {
+      setErrorMsg('')
       queryClient.invalidateQueries({ queryKey: ['modulo0'] })
       setShowTemplates(false)
     },
     onError: (err: any) => {
-      alert(err.message || 'Error al importar la plantilla.')
+      setErrorMsg(err?.friendlyMessage || err?.message || 'Error al importar la plantilla.')
     }
   })
 

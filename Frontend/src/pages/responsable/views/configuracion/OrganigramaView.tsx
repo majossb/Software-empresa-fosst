@@ -141,13 +141,17 @@ export default function OrganigramaView() {
 
   // Confirm Auto Organize State
   const [showAutoConfirm, setShowAutoConfirm] = useState(false);
-  
+  const [mutationError, setMutationError] = useState<string>('');
+
   const containerRef = useRef<HTMLDivElement>(null);
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
+  const errMsg = (err: unknown, fallback: string) =>
+    (err as any)?.friendlyMessage || (err as any)?.message || fallback;
+
   // Queries
   const { data: nodes = [], isLoading, isError } = useQuery({
-    queryKey: ['organigrama'],
+    queryKey: ['modulo0', 'organigrama'],
     queryFn: modulo0Service.getOrganigrama
   });
 
@@ -155,32 +159,41 @@ export default function OrganigramaView() {
   const updateNodeMutation = useMutation({
     mutationFn: ({ id, data }: { id: string; data: Partial<NodoOrganigrama> }) => modulo0Service.updateNodo(id, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['organigrama'] });
-    }
+      setMutationError('');
+      setIsModalOpen(false);
+      queryClient.invalidateQueries({ queryKey: ['modulo0'] });
+    },
+    onError: (err) => setMutationError(errMsg(err, 'No se pudo guardar el cargo.'))
   });
 
   const createNodeMutation = useMutation({
     mutationFn: modulo0Service.createNodo,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['organigrama'] });
+      setMutationError('');
+      queryClient.invalidateQueries({ queryKey: ['modulo0'] });
       setIsModalOpen(false);
-    }
+    },
+    onError: (err) => setMutationError(errMsg(err, 'No se pudo crear el cargo.'))
   });
 
   const deleteNodeMutation = useMutation({
     mutationFn: modulo0Service.deleteNodo,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['organigrama'] });
-    }
+      setMutationError('');
+      queryClient.invalidateQueries({ queryKey: ['modulo0'] });
+    },
+    onError: (err) => setMutationError(errMsg(err, 'No se pudo eliminar el cargo.'))
   });
 
   const autoOrganizeMutation = useMutation({
     mutationFn: modulo0Service.autoOrganizarOrganigrama,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['organigrama'] });
+      setMutationError('');
+      queryClient.invalidateQueries({ queryKey: ['modulo0'] });
       setShowAutoConfirm(false);
       setTimeout(() => fitToScreen(), 120);
-    }
+    },
+    onError: (err) => setMutationError(errMsg(err, 'No se pudo auto-organizar el organigrama.'))
   });
 
   const importBaseOrgMutation = useMutation({
@@ -229,10 +242,11 @@ export default function OrganigramaView() {
       });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['organigrama'] });
+      setMutationError('');
       queryClient.invalidateQueries({ queryKey: ['modulo0'] });
       setTimeout(() => fitToScreen(), 150);
-    }
+    },
+    onError: (err) => setMutationError(errMsg(err, 'No se pudo cargar la estructura base.'))
   });
 
   // Tree computation
@@ -533,8 +547,8 @@ export default function OrganigramaView() {
     if (modalMode === 'create') {
       createNodeMutation.mutate(formData as any);
     } else if (selectedNodeId) {
+      // El modal se cierra en onSuccess (no antes), para no ocultar errores
       updateNodeMutation.mutate({ id: selectedNodeId, data: formData });
-      setIsModalOpen(false);
     }
   };
 
@@ -631,6 +645,13 @@ export default function OrganigramaView() {
           : "w-full h-[750px] min-h-[650px] flex flex-col bg-slate-50 rounded-2xl border border-slate-200 overflow-hidden shadow-xs relative"
       }
     >
+      {mutationError && (
+        <div className="px-5 py-2 bg-red-50 border-b border-red-200 text-red-700 text-xs font-medium flex items-center justify-between">
+          <span>{mutationError}</span>
+          <button type="button" onClick={() => setMutationError('')} className="text-red-500 hover:text-red-700 font-bold">Cerrar</button>
+        </div>
+      )}
+
       {/* Toolbar en 2 zonas con flex-wrap */}
       <div className="relative z-10 bg-white border-b border-slate-200 px-5 py-3.5 flex flex-wrap items-center justify-between gap-4 shadow-2xs">
         {/* Zona Izquierda: Ícono + Título + Subtítulo */}

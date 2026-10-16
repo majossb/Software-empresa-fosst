@@ -1,6 +1,10 @@
+from django.db.models import Count
 from rest_framework.decorators import action
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+
 from apps.common.mixins import EmpresaScopedViewSet
+from apps.common.permissions import IsRolParaEscritura
 from .models import NodoOrganigrama, Proceso, Sede
 from .serializers import NodoOrganigramaSerializer, ProcesoSerializer, SedeSerializer
 
@@ -9,6 +13,38 @@ class SedeViewSet(EmpresaScopedViewSet):
     queryset = Sede.objects.all()
     serializer_class = SedeSerializer
     filterset_fields = ["activa", "ciudad"]
+    permission_classes = [IsAuthenticated, IsRolParaEscritura.de("responsable")]
+
+    def get_queryset(self):
+        # Anota el número de trabajadores para el serializer (_count) sin N+1
+        return super().get_queryset().annotate(trabajadores_count=Count("trabajadores"))
+
+    @staticmethod
+    def _unset_otras_principales(sede):
+        if sede.es_principal:
+            Sede.objects.filter(empresa=sede.empresa, es_principal=True).exclude(
+                pk=sede.pk
+            ).update(es_principal=False)
+
+    def perform_create(self, serializer):
+        super().perform_create(serializer)
+        self._unset_otras_principales(serializer.instance)
+
+    def perform_update(self, serializer):
+        super().perform_update(serializer)
+        self._unset_otras_principales(serializer.instance)
+
+    def destroy(self, request, *args, **kwargs):
+        sede = self.get_object()
+        if sede.trabajadores.exists():
+            return Response(
+                {
+                    "message": "No se puede eliminar la sede porque tiene trabajadores asociados.",
+                    "code": "SEDE_CON_TRABAJADORES",
+                },
+                status=400,
+            )
+        return super().destroy(request, *args, **kwargs)
 
 
 def es_descendiente(nodo_evaluado, ancestro_id):
@@ -39,6 +75,19 @@ class NodoOrganigramaViewSet(EmpresaScopedViewSet):
     """
     queryset = NodoOrganigrama.objects.all()
     serializer_class = NodoOrganigramaSerializer
+    permission_classes = [IsAuthenticated, IsRolParaEscritura.de("responsable")]
+
+    def destroy(self, request, *args, **kwargs):
+        nodo = self.get_object()
+        if nodo.hijos.filter(activo=True).exists():
+            return Response(
+                {
+                    "message": "No se puede eliminar un cargo con subordinados activos. Reasigna o elimina primero los cargos dependientes.",
+                    "code": "NODO_CON_HIJOS",
+                },
+                status=400,
+            )
+        return super().destroy(request, *args, **kwargs)
 
     def get_queryset(self):
         qs = super().get_queryset()
@@ -122,6 +171,24 @@ class NodoOrganigramaViewSet(EmpresaScopedViewSet):
 class ProcesoViewSet(EmpresaScopedViewSet):
     queryset = Proceso.objects.all()
     serializer_class = ProcesoSerializer
+    permission_classes = [IsAuthenticated, IsRolParaEscritura.de("responsable")]
+
+    def get_throttles(self):
+        if self.action == "sugerir_ia":
+            self.throttle_scope = "ia"
+        return super().get_throttles()
+
+    def destroy(self, request, *args, **kwargs):
+        proceso = self.get_object()
+        if proceso.subprocesos.filter(activo=True).exists():
+            return Response(
+                {
+                    "message": "No se puede eliminar un proceso con subprocesos activos.",
+                    "code": "PROCESO_CON_SUBPROCESOS",
+                },
+                status=400,
+            )
+        return super().destroy(request, *args, **kwargs)
 
     def get_queryset(self):
         qs = super().get_queryset()
@@ -325,8 +392,14 @@ class ProcesoViewSet(EmpresaScopedViewSet):
                 rel_path = empresa.logo_url.lstrip('/')
                 if rel_path.startswith('media/'):
                     rel_path = rel_path[6:]
-                full_logo_path = os.path.join(settings.MEDIA_ROOT, rel_path)
-                if os.path.exists(full_logo_path):
+                # El logo se guarda en BASE_DIR/uploads; se buscan ambas ubicaciones
+                # por compatibilidad (MEDIA_ROOT) antes de descartarlo.
+                candidatos = [
+                    os.path.join(settings.BASE_DIR, rel_path),
+                    os.path.join(settings.MEDIA_ROOT, rel_path),
+                ]
+                full_logo_path = next((p for p in candidatos if os.path.exists(p)), None)
+                if full_logo_path:
                     # Placa blanca redonda para el logo
                     p.setFillColor(colors.white)
                     p.roundRect(30, height - 60, 50, 50, 8, fill=True, stroke=False)

@@ -228,6 +228,7 @@ REST_FRAMEWORK = {
         "password_reset": "5/hour",
         "register": "5/hour",
         "michc_recalcular": "20/min",  # Recálculo manual de MICHC
+        "ia": "30/hour",  # Endpoints que invocan servicios de IA (coste externo)
     },
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
     "DEFAULT_FILTER_BACKENDS": ("django_filters.rest_framework.DjangoFilterBackend",),

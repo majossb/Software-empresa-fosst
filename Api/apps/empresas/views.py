@@ -285,7 +285,8 @@ class BrandingEmpresaView(APIView):
                 ALLOWED_MP_KEYS = {
                     "estrategico", "misional", "apoyo",
                     "entradas", "salidas", "fondo",
-                    "texto_entradas", "texto_salidas"
+                    "texto_entradas", "texto_salidas",
+                    "entradas_items", "salidas_items",
                 }
                 unknown_mp_keys = set(mp.keys()) - ALLOWED_MP_KEYS
                 if unknown_mp_keys:
@@ -296,6 +297,20 @@ class BrandingEmpresaView(APIView):
                         },
                         status=status.HTTP_400_BAD_REQUEST,
                     )
+
+                # Las listas de entradas/salidas deben ser arrays de strings
+                for list_key in ("entradas_items", "salidas_items"):
+                    val = mp.get(list_key)
+                    if val is not None and not (
+                        isinstance(val, list) and all(isinstance(x, str) for x in val)
+                    ):
+                        return Response(
+                            {
+                                "message": f"'{list_key}' debe ser una lista de textos.",
+                                "code": "INVALID_ITEMS_LIST",
+                            },
+                            status=status.HTTP_400_BAD_REQUEST,
+                        )
 
                 MP_COLOR_FIELDS = ["estrategico", "misional", "apoyo", "entradas", "salidas", "fondo"]
                 for field in MP_COLOR_FIELDS:
@@ -392,7 +407,27 @@ class ContextoEmpresaView(APIView):
             if f in request.data:
                 val = request.data[f]
                 if f in ["num_trabajadores", "nivel_riesgo"] and val is not None:
-                    datos_nuevos[f] = int(val)
+                    try:
+                        val = int(val)
+                    except (TypeError, ValueError):
+                        return Response(
+                            {
+                                "message": f"El campo '{f}' debe ser un número entero.",
+                                "code": "INVALID_NUMBER",
+                            },
+                            status=status.HTTP_400_BAD_REQUEST,
+                        )
+                    if f == "num_trabajadores" and val < 1:
+                        return Response(
+                            {"message": "El número de trabajadores debe ser mayor o igual a 1.", "code": "INVALID_NUM_TRABAJADORES"},
+                            status=status.HTTP_400_BAD_REQUEST,
+                        )
+                    if f == "nivel_riesgo" and not (1 <= val <= 5):
+                        return Response(
+                            {"message": "El nivel de riesgo debe estar entre 1 y 5.", "code": "INVALID_NIVEL_RIESGO"},
+                            status=status.HTTP_400_BAD_REQUEST,
+                        )
+                    datos_nuevos[f] = val
                 else:
                     datos_nuevos[f] = val
 
@@ -412,8 +447,29 @@ class ContextoEmpresaView(APIView):
         confirmar = request.data.get("confirmar_transicion") is True
 
         # Si el nuevo contexto implica un cambio de capítulo y NO ha sido confirmado:
-        # NO PERSISTIR el nuevo contexto aún y devolver la respuesta estructurada de confirmación.
+        # Se persisten los cambios que NO dependen del capítulo (representante, CIIU, etc.)
+        # para no perderlos, y se deja pendiente solo trabajadores/riesgo/capítulo.
         if capitulo_calculado != empresa.capitulo_vigente and not confirmar:
+            campos_capitulo = {"num_trabajadores", "nivel_riesgo"}
+            datos_sin_capitulo = {k: v for k, v in datos_nuevos.items() if k not in campos_capitulo}
+            if datos_sin_capitulo:
+                with transaction.atomic():
+                    for key, val in datos_sin_capitulo.items():
+                        setattr(empresa, key, val)
+                    empresa.save(update_fields=list(datos_sin_capitulo.keys()) + ["updated_at"])
+                    AuditLog.objects.create(
+                        usuario=request.user,
+                        empresa=empresa,
+                        accion="ACTUALIZAR_CONTEXTO_EMPRESA",
+                        tabla_afectada="empresas",
+                        registro_id=str(empresa.id),
+                        valores_anteriores={k: old_data.get(k) for k in datos_sin_capitulo},
+                        valores_nuevos={k: getattr(empresa, k) for k in datos_sin_capitulo},
+                        ip=get_ip(request),
+                        user_agent=request.META.get("HTTP_USER_AGENT", ""),
+                        ruta=request.path,
+                        metodo_http=request.method,
+                    )
             return Response(
                 {
                     "success": False,
@@ -469,8 +525,14 @@ class TransicionCapituloView(APIView):
         if not empresa:
             return Response({"success": False, "code": "RESOURCE_NOT_FOUND", "message": "Sin empresa asociada."}, status=400)
 
-        num_trabajadores = int(request.data.get("num_trabajadores", empresa.num_trabajadores))
-        nivel_riesgo = int(request.data.get("nivel_riesgo", empresa.nivel_riesgo))
+        try:
+            num_trabajadores = int(request.data.get("num_trabajadores", empresa.num_trabajadores))
+            nivel_riesgo = int(request.data.get("nivel_riesgo", empresa.nivel_riesgo))
+        except (TypeError, ValueError):
+            return Response(
+                {"success": False, "code": "INVALID_NUMBER", "message": "Los valores de trabajadores/riesgo deben ser numéricos."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         motivo = str(request.data.get("motivo", "")).strip()
 
         capitulo_calculado = clasificar_capitulo(num_trabajadores, nivel_riesgo)
@@ -745,6 +807,7 @@ class ResumenCompletitudView(APIView):
 # ── POST /api/modulo0/contexto/ciiu/sugerir ───────────────────────
 class SugerirCiiuIAView(APIView):
     permission_classes = [IsAuthenticated, EsCorporativo]
+    throttle_scope = "ia"
 
     def post(self, request):
         empresa = request.user.empresa
@@ -819,6 +882,7 @@ class SugerirCiiuIAView(APIView):
 # ── POST /api/modulo0/contexto/ciiu/describir ──────────────────────
 class DescribirCiiuIAView(APIView):
     permission_classes = [IsAuthenticated, EsCorporativo]
+    throttle_scope = "ia"
 
     def post(self, request):
         empresa = request.user.empresa
@@ -927,6 +991,7 @@ class UpdateIdentidadView(APIView):
 # ── POST /api/modulo0/identidad/sugerir-ia ────────────────────────
 class SugerirIdentidadIAView(APIView):
     permission_classes = [IsAuthenticated, EsCorporativo]
+    throttle_scope = "ia"
 
     def post(self, request):
         empresa = request.user.empresa

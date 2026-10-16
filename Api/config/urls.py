@@ -36,8 +36,9 @@ urlpatterns = [
     path("api/docs/", SpectacularSwaggerView.as_view(url_name="schema"), name="docs"),
 ]
 
-# Servir archivos subidos (incluyendo logotipos)
-if settings.DEBUG or not settings.DEBUG: # Servir siempre localmente para desarrollo/pruebas
+# Servir archivos subidos (incluyendo logotipos) solo en desarrollo.
+# En producción/uat estos archivos deben servirse desde S3/CDN.
+if settings.DEBUG:
     import os
     urlpatterns += static("/uploads/", document_root=os.path.join(settings.BASE_DIR, "uploads"))
 

@@ -1,17 +1,53 @@
 from rest_framework import serializers
+
+from apps.perfilcargo.models import PerfilCargo
 from .models import NodoOrganigrama, Proceso, Sede
 
 
+def _empresa_del_contexto(context):
+    """Empresa del usuario autenticado (o la de ?empresa_id= para ADMIN)."""
+    request = context.get("request")
+    if not request or not hasattr(request, "user"):
+        return None
+    user = request.user
+    empresa = getattr(user, "empresa", None)
+    if empresa is None and str(getattr(user, "rol", "")) == "ADMIN":
+        from apps.empresas.models import Empresa
+
+        empresa_id = request.query_params.get("empresa_id")
+        if empresa_id:
+            return Empresa.objects.filter(id=empresa_id).first()
+    return empresa
+
+
+def _usuario_es_admin(context):
+    request = context.get("request")
+    user = getattr(request, "user", None)
+    return str(getattr(user, "rol", "")) == "ADMIN"
+
+
 class SedeSerializer(serializers.ModelSerializer):
+    # Conteo de trabajadores asociados (usado por el frontend para el guard de borrado)
+    _count = serializers.SerializerMethodField()
+
     class Meta:
         model = Sede
         fields = "__all__"
         read_only_fields = ["id", "empresa", "created_at", "updated_at"]
 
+    def get__count(self, obj):
+        count = getattr(obj, "trabajadores_count", None)
+        if count is None:
+            count = obj.trabajadores.count()
+        return {"trabajadores": count}
+
 
 class NodoOrganigramaSerializer(serializers.ModelSerializer):
     padre_id = serializers.PrimaryKeyRelatedField(
-        source="padre", queryset=NodoOrganigrama.objects.all(), required=False, allow_null=True
+        source="padre", queryset=NodoOrganigrama.objects.none(), required=False, allow_null=True
+    )
+    perfil_cargo = serializers.PrimaryKeyRelatedField(
+        queryset=PerfilCargo.objects.none(), required=False, allow_null=True
     )
     nivel = serializers.IntegerField(required=False, default=1)
     hijos = serializers.SerializerMethodField()
@@ -20,6 +56,24 @@ class NodoOrganigramaSerializer(serializers.ModelSerializer):
         model = NodoOrganigrama
         fields = "__all__"
         read_only_fields = ["id", "empresa", "created_at", "updated_at"]
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._scopear_querysets()
+
+    def _scopear_querysets(self):
+        empresa = _empresa_del_contexto(self.context)
+        if empresa is not None:
+            self.fields["padre_id"].queryset = NodoOrganigrama.objects.filter(
+                empresa=empresa, activo=True
+            )
+            self.fields["perfil_cargo"].queryset = PerfilCargo.objects.filter(empresa=empresa)
+        elif _usuario_es_admin(self.context):
+            self.fields["padre_id"].queryset = NodoOrganigrama.objects.all()
+            self.fields["perfil_cargo"].queryset = PerfilCargo.objects.all()
+        else:
+            self.fields["padre_id"].queryset = NodoOrganigrama.objects.none()
+            self.fields["perfil_cargo"].queryset = PerfilCargo.objects.none()
 
     def create(self, validated_data):
         padre = validated_data.get("padre")
@@ -43,7 +97,7 @@ class SubprocesoSerializer(serializers.ModelSerializer):
 
 class ProcesoSerializer(serializers.ModelSerializer):
     padre_id = serializers.PrimaryKeyRelatedField(
-        source="padre", queryset=Proceso.objects.all(), required=False, allow_null=True
+        source="padre", queryset=Proceso.objects.none(), required=False, allow_null=True
     )
     subprocesos = serializers.SerializerMethodField()
 
@@ -51,6 +105,16 @@ class ProcesoSerializer(serializers.ModelSerializer):
         model = Proceso
         fields = "__all__"
         read_only_fields = ["id", "empresa", "nombre_normalizado", "created_at", "updated_at"]
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        empresa = _empresa_del_contexto(self.context)
+        if empresa is not None:
+            self.fields["padre_id"].queryset = Proceso.objects.filter(empresa=empresa, activo=True)
+        elif _usuario_es_admin(self.context):
+            self.fields["padre_id"].queryset = Proceso.objects.all()
+        else:
+            self.fields["padre_id"].queryset = Proceso.objects.none()
 
     def validate(self, attrs):
         from .models import normalizar_texto

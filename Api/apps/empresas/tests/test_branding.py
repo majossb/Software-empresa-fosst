@@ -108,6 +108,36 @@ class BrandingEmpresaTest(TestCase):
         self.empresa_a.refresh_from_db()
         self.assertEqual(self.empresa_a.branding["primario"], "#0B3C5D")
 
+    # 2b. Persistencia de listas entradas_items / salidas_items del mapa
+    def test_put_branding_entradas_salidas_items(self):
+        self.client_a.force_authenticate(user=self.user_a_resp)
+        payload = {
+            "mapa_procesos": {
+                "entradas_items": ["Requisito legal", "Partes interesadas"],
+                "salidas_items": ["Lugares seguros"],
+            }
+        }
+        res = self.client_a.put("/api/modulo0/branding", payload, format="json")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertEqual(res.data["mapa_procesos"]["entradas_items"], ["Requisito legal", "Partes interesadas"])
+        self.assertEqual(res.data["mapa_procesos"]["salidas_items"], ["Lugares seguros"])
+
+        self.empresa_a.refresh_from_db()
+        self.assertEqual(
+            self.empresa_a.branding["mapa_procesos"]["entradas_items"],
+            ["Requisito legal", "Partes interesadas"],
+        )
+
+    def test_put_branding_items_tipo_invalido(self):
+        self.client_a.force_authenticate(user=self.user_a_resp)
+        res = self.client_a.put(
+            "/api/modulo0/branding",
+            {"mapa_procesos": {"entradas_items": "no-es-lista"}},
+            format="json",
+        )
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(res.data.get("code"), "INVALID_ITEMS_LIST")
+
     # 3. Rechazo HTTP 400 ante HEX inválido
     def test_put_branding_hex_invalido(self):
         self.client_a.force_authenticate(user=self.user_a_resp)

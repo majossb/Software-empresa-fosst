@@ -22,7 +22,7 @@ class IAContextoService:
 
         try:
             from anthropic import Anthropic
-            client = Anthropic(api_key=api_key)
+            client = Anthropic(api_key=api_key, timeout=30.0, max_retries=1)
 
             prompt = (
                 "Actúa como un consultor experto en planeación estratégica corporativa y salud y seguridad en el trabajo (SST).\n"
@@ -68,7 +68,7 @@ class IAContextoService:
 
         try:
             from anthropic import Anthropic
-            client = Anthropic(api_key=api_key)
+            client = Anthropic(api_key=api_key, timeout=30.0, max_retries=1)
 
             prompt = (
                 "Actúa como un experto consultor organizacional de procesos y sistemas de gestión integrados (ISO 9001, ISO 45001).\n"
@@ -120,7 +120,7 @@ class IAContextoService:
 
         try:
             from anthropic import Anthropic
-            client = Anthropic(api_key=api_key)
+            client = Anthropic(api_key=api_key, timeout=30.0, max_retries=1)
 
             prompt = (
                 "Actúa como un consultor experto en el Decreto 768 / CIIU Rev. 4 A.C. de Colombia y salud y seguridad en el trabajo (SST).\n"
@@ -199,7 +199,7 @@ class IAContextoService:
 
         try:
             from anthropic import Anthropic
-            client = Anthropic(api_key=api_key)
+            client = Anthropic(api_key=api_key, timeout=30.0, max_retries=1)
 
             prompt = (
                 "Actúa como un experto en salud y seguridad en el trabajo (SST) y normatividad laboral de Colombia (Decreto 768 / CIIU Rev. 4 A.C.).\n"

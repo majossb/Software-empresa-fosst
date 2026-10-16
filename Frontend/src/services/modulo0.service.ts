@@ -209,7 +209,6 @@ export const modulo0Service = {
       '/organizacion/procesos/importar-plantilla/',
       { plantilla_id: plantillaId }
     ),
-  limpiarDuplicadosProcesos: () => apiClient.post<{ message: string; eliminados: number }>('/modulo0/procesos/limpiar-duplicados', {}),
 
   // Identidad
   updateIdentidad: (data: { mision?: string | null; vision?: string | null; valores?: string[] | null }) =>
