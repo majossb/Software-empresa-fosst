@@ -234,6 +234,24 @@ export const reclutamientoService = {
     )
   },
 
+  actualizarMiPerfil: async (payload: any) => {
+    const token = localStorage.getItem(CANDIDATE_TOKEN_KEY)
+    const BASE_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8000/api'
+    const res = await fetch(`${BASE_URL}/reclutamiento/portal/mi-perfil/`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(payload),
+    })
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}))
+      throw new Error(err.detail || 'No se pudo actualizar el perfil.')
+    }
+    return res.json()
+  },
+
   getMiPerfil: async () => {
     const token = localStorage.getItem(CANDIDATE_TOKEN_KEY)
     if (!token) return null
@@ -271,6 +289,10 @@ export const reclutamientoService = {
 
   getCandidateToken: () => {
     return localStorage.getItem(CANDIDATE_TOKEN_KEY)
+  },
+
+  guardarTokenCandidato: (token: string) => {
+    if (token) localStorage.setItem(CANDIDATE_TOKEN_KEY, token)
   },
 
   logoutCandidato: () => {

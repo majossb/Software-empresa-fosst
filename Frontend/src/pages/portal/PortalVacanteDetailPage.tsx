@@ -208,6 +208,12 @@ export default function PortalVacanteDetailPage() {
         })
       )
 
+      // Persistir el token de acceso para reutilizarlo (seguimiento / 1-click apply)
+      if (res?.token_acceso) {
+        reclutamientoService.guardarTokenCandidato(res.token_acceso)
+        setHasCandidateSession(true)
+      }
+
       setSuccessData({
         codigo_otp: res.codigo_otp,
         token_acceso: res.token_acceso,

@@ -202,3 +202,34 @@ class FaseFDocumentoUploadTestCase(APITestCase):
             format="multipart",
         )
         self.assertEqual(res.status_code, status.HTTP_404_NOT_FOUND)
+
+
+class FaseFPortalPerfilTestCase(APITestCase):
+    """El candidato autenticado puede actualizar su perfil desde el portal."""
+
+    def setUp(self):
+        self.empresa = _crear_empresa("900000021-1", "Empresa Portal")
+        self.candidato = Candidato.objects.create(
+            empresa=self.empresa, documento="P1", nombres="Portal", apellidos="Test",
+            email="portal@mail.com", autoriza_tratamiento_datos=True,
+        )
+        self.token = generar_token_acceso_candidato(candidato=self.candidato, enviar_email=False)
+
+    def test_actualizar_mi_perfil(self):
+        res = self.client.patch(
+            "/api/reclutamiento/portal/mi-perfil/",
+            {
+                "telefono": "3001112233",
+                "ciudad": "Popayán",
+                "titulo_profesional": "Ingeniero Industrial",
+                "anios_experiencia": 6,
+                "competencias": ["Liderazgo", "SST"],
+            },
+            format="json",
+            HTTP_AUTHORIZATION=f"Bearer {self.token.token}",
+        )
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.candidato.refresh_from_db()
+        self.assertEqual(self.candidato.ciudad, "Popayán")
+        self.assertEqual(self.candidato.perfil.titulo_profesional, "Ingeniero Industrial")
+        self.assertEqual(self.candidato.perfil.competencias, ["Liderazgo", "SST"])

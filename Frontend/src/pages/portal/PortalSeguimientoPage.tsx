@@ -20,6 +20,8 @@ export default function PortalSeguimientoPage() {
   const [statusMessage, setStatusMessage] = useState('')
   const [applyingVacanteId, setApplyingVacanteId] = useState<string | null>(null)
   const [appliedVacanteIds, setAppliedVacanteIds] = useState<string[]>([])
+  const [editingPerfil, setEditingPerfil] = useState(false)
+  const [perfilEdit, setPerfilEdit] = useState<any>({})
 
   useEffect(() => {
     const token = reclutamientoService.getCandidateToken()
@@ -113,6 +115,30 @@ export default function PortalSeguimientoPage() {
       setPostulaciones(updated)
     } catch (err: any) {
       alert(err.message || 'Error al retirar la postulación.')
+    }
+  }
+
+  const abrirEdicionPerfil = () => {
+    if (!perfilCompleto) return
+    setPerfilEdit({
+      telefono: perfilCompleto.telefono || '',
+      ciudad: perfilCompleto.ciudad || '',
+      titulo_profesional: perfilCompleto.titulo_profesional || '',
+      nivel_educativo: perfilCompleto.nivel_educativo || '',
+      anios_experiencia: perfilCompleto.anios_experiencia ?? 0,
+      aspiracion_salarial: perfilCompleto.aspiracion_salarial ?? null,
+      resumen_profesional: perfilCompleto.resumen_profesional || '',
+    })
+    setEditingPerfil(true)
+  }
+
+  const guardarPerfil = async () => {
+    try {
+      const updated = await reclutamientoService.actualizarMiPerfil(perfilEdit)
+      setPerfilCompleto(updated)
+      setEditingPerfil(false)
+    } catch (err: any) {
+      alert(err.message || 'No se pudo actualizar el perfil.')
     }
   }
 
@@ -424,33 +450,109 @@ export default function PortalSeguimientoPage() {
             {/* TAB 3: Mi Perfil Registrado */}
             {activeTab === 'mi_perfil' && perfilCompleto && (
               <div className="p-6 rounded-2xl bg-slate-800/80 border border-slate-700 space-y-6 text-xs">
-                <div>
-                  <h2 className="text-lg font-bold text-white">Información de Perfil Guardada</h2>
-                  <p className="text-slate-400 mt-0.5">
-                    Estos son los datos con los que el sistema realiza tus postulaciones automáticas.
-                  </p>
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <h2 className="text-lg font-bold text-white">Información de Perfil Guardada</h2>
+                    <p className="text-slate-400 mt-0.5">
+                      Estos son los datos con los que el sistema realiza tus postulaciones automáticas.
+                    </p>
+                  </div>
+                  {editingPerfil ? (
+                    <div className="flex gap-2 flex-shrink-0">
+                      <button
+                        onClick={() => setEditingPerfil(false)}
+                        className="px-3 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-white font-bold transition"
+                      >
+                        Cancelar
+                      </button>
+                      <button
+                        onClick={guardarPerfil}
+                        className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold transition"
+                      >
+                        Guardar
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={abrirEdicionPerfil}
+                      className="px-3 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-emerald-400 font-bold transition flex-shrink-0"
+                    >
+                      Editar Perfil
+                    </button>
+                  )}
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-slate-300">
-                  <div className="p-4 rounded-xl bg-slate-900 border border-slate-800 space-y-2">
-                    <span className="text-slate-500 font-bold uppercase text-[10px] tracking-wider block">Datos Personales</span>
-                    <p><strong>Nombre:</strong> {perfilCompleto.nombres} {perfilCompleto.apellidos}</p>
-                    <p><strong>Documento:</strong> {perfilCompleto.tipo_documento} {perfilCompleto.documento}</p>
-                    <p><strong>Email:</strong> {perfilCompleto.email}</p>
-                    <p><strong>Teléfono:</strong> {perfilCompleto.telefono || 'No registrado'}</p>
-                    <p><strong>Ciudad:</strong> {perfilCompleto.ciudad || 'Colombia'}</p>
+                {editingPerfil ? (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-slate-200">
+                    <div>
+                      <label className="block text-slate-400 font-medium mb-1">Teléfono</label>
+                      <input className="w-full p-2 rounded-lg bg-slate-900 border border-slate-700 text-white"
+                        value={perfilEdit.telefono || ''} onChange={(e) => setPerfilEdit((p: any) => ({ ...p, telefono: e.target.value }))} />
+                    </div>
+                    <div>
+                      <label className="block text-slate-400 font-medium mb-1">Ciudad</label>
+                      <input className="w-full p-2 rounded-lg bg-slate-900 border border-slate-700 text-white"
+                        value={perfilEdit.ciudad || ''} onChange={(e) => setPerfilEdit((p: any) => ({ ...p, ciudad: e.target.value }))} />
+                    </div>
+                    <div>
+                      <label className="block text-slate-400 font-medium mb-1">Título / Profesión</label>
+                      <input className="w-full p-2 rounded-lg bg-slate-900 border border-slate-700 text-white"
+                        value={perfilEdit.titulo_profesional || ''} onChange={(e) => setPerfilEdit((p: any) => ({ ...p, titulo_profesional: e.target.value }))} />
+                    </div>
+                    <div>
+                      <label className="block text-slate-400 font-medium mb-1">Nivel Educativo</label>
+                      <select className="w-full p-2 rounded-lg bg-slate-900 border border-slate-700 text-white"
+                        value={perfilEdit.nivel_educativo || ''} onChange={(e) => setPerfilEdit((p: any) => ({ ...p, nivel_educativo: e.target.value }))}>
+                        <option value="">—</option>
+                        <option value="primaria">Primaria</option>
+                        <option value="bachillerato">Bachillerato</option>
+                        <option value="tecnico">Técnico</option>
+                        <option value="tecnologo">Tecnólogo</option>
+                        <option value="universitario">Universitario</option>
+                        <option value="especializacion">Especialización</option>
+                        <option value="maestria">Maestría</option>
+                        <option value="doctorado">Doctorado</option>
+                        <option value="otro">Otro</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-slate-400 font-medium mb-1">Años de Experiencia</label>
+                      <input type="number" min={0} step={0.5} className="w-full p-2 rounded-lg bg-slate-900 border border-slate-700 text-white"
+                        value={perfilEdit.anios_experiencia ?? 0} onChange={(e) => setPerfilEdit((p: any) => ({ ...p, anios_experiencia: Number(e.target.value) }))} />
+                    </div>
+                    <div>
+                      <label className="block text-slate-400 font-medium mb-1">Aspiración Salarial</label>
+                      <input type="number" min={0} className="w-full p-2 rounded-lg bg-slate-900 border border-slate-700 text-white"
+                        value={perfilEdit.aspiracion_salarial ?? ''} onChange={(e) => setPerfilEdit((p: any) => ({ ...p, aspiracion_salarial: e.target.value ? Number(e.target.value) : null }))} />
+                    </div>
+                    <div className="sm:col-span-2">
+                      <label className="block text-slate-400 font-medium mb-1">Resumen Profesional</label>
+                      <textarea rows={3} className="w-full p-2 rounded-lg bg-slate-900 border border-slate-700 text-white"
+                        value={perfilEdit.resumen_profesional || ''} onChange={(e) => setPerfilEdit((p: any) => ({ ...p, resumen_profesional: e.target.value }))} />
+                    </div>
                   </div>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-slate-300">
+                    <div className="p-4 rounded-xl bg-slate-900 border border-slate-800 space-y-2">
+                      <span className="text-slate-500 font-bold uppercase text-[10px] tracking-wider block">Datos Personales</span>
+                      <p><strong>Nombre:</strong> {perfilCompleto.nombres} {perfilCompleto.apellidos}</p>
+                      <p><strong>Documento:</strong> {perfilCompleto.tipo_documento} {perfilCompleto.documento}</p>
+                      <p><strong>Email:</strong> {perfilCompleto.email}</p>
+                      <p><strong>Teléfono:</strong> {perfilCompleto.telefono || 'No registrado'}</p>
+                      <p><strong>Ciudad:</strong> {perfilCompleto.ciudad || 'Colombia'}</p>
+                    </div>
 
-                  <div className="p-4 rounded-xl bg-slate-900 border border-slate-800 space-y-2">
-                    <span className="text-slate-500 font-bold uppercase text-[10px] tracking-wider block">Perfil Profesional</span>
-                    <p><strong>Profesión / Título:</strong> {perfilCompleto.titulo_profesional || 'No especificado'}</p>
-                    <p><strong>Nivel Educativo:</strong> {perfilCompleto.nivel_educativo || 'Universitario'}</p>
-                    <p><strong>Años de Experiencia:</strong> {perfilCompleto.anios_experiencia} años</p>
-                    <p><strong>Aspiración Salarial:</strong> {perfilCompleto.aspiracion_salarial ? `$${Number(perfilCompleto.aspiracion_salarial).toLocaleString()}` : 'A convenir'}</p>
+                    <div className="p-4 rounded-xl bg-slate-900 border border-slate-800 space-y-2">
+                      <span className="text-slate-500 font-bold uppercase text-[10px] tracking-wider block">Perfil Profesional</span>
+                      <p><strong>Profesión / Título:</strong> {perfilCompleto.titulo_profesional || 'No especificado'}</p>
+                      <p><strong>Nivel Educativo:</strong> {perfilCompleto.nivel_educativo || 'Universitario'}</p>
+                      <p><strong>Años de Experiencia:</strong> {perfilCompleto.anios_experiencia} años</p>
+                      <p><strong>Aspiración Salarial:</strong> {perfilCompleto.aspiracion_salarial ? `$${Number(perfilCompleto.aspiracion_salarial).toLocaleString()}` : 'A convenir'}</p>
+                    </div>
                   </div>
-                </div>
+                )}
 
-                {perfilCompleto.ultima_hoja_vida && (
+                {!editingPerfil && perfilCompleto.ultima_hoja_vida && (
                   <div className="p-4 rounded-xl bg-slate-900 border border-emerald-500/30 flex items-center justify-between">
                     <div className="flex items-center gap-3">
                       <div className="w-10 h-10 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center">

@@ -11,7 +11,7 @@ from rest_framework.response import Response
 from rest_framework.permissions import AllowAny
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 
-from apps.reclutamiento.models import Vacante, Postulacion, Candidato
+from apps.reclutamiento.models import Vacante, Postulacion, Candidato, PerfilCandidato
 from apps.reclutamiento.portal_auth import (
     CandidateTokenAuthentication,
     IsAuthenticatedCandidate,
@@ -318,6 +318,43 @@ class MiPerfilCandidatoView(APIView):
         candidato = getattr(request, "candidato", request.user)
         serializer = CandidatoPerfilConsultaSerializer(candidato)
         return Response(serializer.data)
+
+    def patch(self, request):
+        return self._actualizar_perfil(request)
+
+    def put(self, request):
+        return self._actualizar_perfil(request)
+
+    def _actualizar_perfil(self, request):
+        """Permite al candidato actualizar sus datos de contacto y su perfil profesional."""
+        candidato = getattr(request, "candidato", request.user)
+        data = request.data
+
+        for campo in ["nombres", "apellidos", "telefono", "ciudad", "direccion"]:
+            if campo in data:
+                setattr(candidato, campo, (data.get(campo) or "").strip())
+        candidato.save()
+
+        perfil, _ = PerfilCandidato.objects.get_or_create(candidato=candidato)
+        campos_perfil = [
+            "titulo_profesional",
+            "nivel_educativo",
+            "resumen_profesional",
+            "anios_experiencia",
+            "competencias",
+            "certificaciones",
+            "experiencia_laboral",
+            "formacion_academica",
+            "aspiracion_salarial",
+            "disponibilidad_viaje",
+            "disponibilidad_traslado",
+        ]
+        for campo in campos_perfil:
+            if campo in data:
+                setattr(perfil, campo, data.get(campo))
+        perfil.save()
+
+        return Response(CandidatoPerfilConsultaSerializer(candidato).data)
 
 
 class PostularRapidoView(APIView):
