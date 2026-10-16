@@ -11,15 +11,18 @@ import {
   PostulacionListItem,
   PostulacionDetail,
   EstadoPostulacion,
+  FuenteReclutamiento,
+  IndicadorFuente,
 } from '@/types/reclutamiento.types'
 import {
   Users, Briefcase, GitPullRequest, Search, Plus, Filter,
   CheckCircle2, Clock, XCircle, AlertTriangle, Eye, ShieldCheck,
   Award, FileCheck, Phone, Mail, MapPin, Calendar, ExternalLink,
-  ChevronRight, ArrowRight, UserCheck, X, RefreshCw
+  ChevronRight, ArrowRight, UserCheck, X, RefreshCw,
+  Tag, TrendingUp, Pencil, FileText
 } from 'lucide-react'
 
-type TabType = 'banco' | 'vacantes' | 'procesos'
+type TabType = 'banco' | 'vacantes' | 'procesos' | 'fuentes'
 
 export default function ReclutamientoView() {
   const [activeTab, setActiveTab] = useState<TabType>('procesos')
@@ -43,6 +46,14 @@ export default function ReclutamientoView() {
     anios_experiencia: 1,
     autoriza_tratamiento_datos: true,
   })
+  const [editingCandidato, setEditingCandidato] = useState(false)
+  const [editCandidatoData, setEditCandidatoData] = useState<any>({})
+
+  // ── Tab 4: Fuentes de Reclutamiento ──────────────────────────
+  const [fuentes, setFuentes] = useState<FuenteReclutamiento[]>([])
+  const [indicadores, setIndicadores] = useState<IndicadorFuente[]>([])
+  const [showNewFuenteModal, setShowNewFuenteModal] = useState(false)
+  const [newFuenteData, setNewFuenteData] = useState({ nombre: '', descripcion: '' })
 
   // ── Tab 2: Vacantes ──────────────────────────────────────────
   const [vacantes, setVacantes] = useState<VacanteListItem[]>([])
@@ -125,6 +136,13 @@ export default function ReclutamientoView() {
       setCandidatos(Array.isArray(candRes) ? candRes : [])
       setVacantes(Array.isArray(vacRes) ? vacRes : [])
       setPerfilesCargo(Array.isArray(cargosRes) ? cargosRes : [])
+
+      const [fuentesRes, indRes] = await Promise.all([
+        reclutamientoService.getFuentes().catch(() => []),
+        reclutamientoService.getIndicadoresFuentes().catch(() => []),
+      ])
+      setFuentes(Array.isArray(fuentesRes) ? fuentesRes : [])
+      setIndicadores(Array.isArray(indRes) ? indRes : [])
 
       if (Array.isArray(vacRes) && vacRes.length > 0 && !selectedVacanteId) {
         const primeraConProceso = vacRes.find(v => v.proceso_seleccion_id) || vacRes[0]
@@ -360,6 +378,63 @@ export default function ReclutamientoView() {
     }
   }
 
+  const handleCreateFuente = async () => {
+    if (!newFuenteData.nombre.trim()) {
+      alert('El nombre de la fuente es obligatorio')
+      return
+    }
+    try {
+      await reclutamientoService.createFuente({
+        nombre: newFuenteData.nombre.trim(),
+        descripcion: newFuenteData.descripcion.trim(),
+      })
+      setShowNewFuenteModal(false)
+      setNewFuenteData({ nombre: '', descripcion: '' })
+      cargarDatos()
+    } catch (err: any) {
+      alert(err.message || 'Error al crear la fuente')
+    }
+  }
+
+  const abrirEdicionCandidato = (c: CandidatoDetail) => {
+    setEditCandidatoData({
+      tipo_documento: c.tipo_documento,
+      documento: c.documento,
+      nombres: c.nombres,
+      apellidos: c.apellidos,
+      email: c.email,
+      telefono: c.telefono || '',
+      ciudad: c.ciudad || '',
+      direccion: c.direccion || '',
+      notas_internas: c.notas_internas || '',
+      autoriza_tratamiento_datos: c.autoriza_tratamiento_datos,
+      perfil: {
+        titulo_profesional: c.perfil?.titulo_profesional || '',
+        nivel_educativo: c.perfil?.nivel_educativo || '',
+        resumen_profesional: c.perfil?.resumen_profesional || '',
+        anios_experiencia: c.perfil?.anios_experiencia ?? 0,
+        competencias: c.perfil?.competencias || [],
+        certificaciones: c.perfil?.certificaciones || [],
+        disponibilidad_viaje: c.perfil?.disponibilidad_viaje || false,
+        disponibilidad_traslado: c.perfil?.disponibilidad_traslado || false,
+        aspiracion_salarial: c.perfil?.aspiracion_salarial ?? null,
+      },
+    })
+    setEditingCandidato(true)
+  }
+
+  const handleSaveCandidato = async () => {
+    if (!selectedCandidato) return
+    try {
+      const updated = await reclutamientoService.updateCandidato(selectedCandidato.id, editCandidatoData)
+      setSelectedCandidato(updated)
+      setEditingCandidato(false)
+      cargarDatos()
+    } catch (err: any) {
+      alert(err.message || 'Error al guardar el candidato')
+    }
+  }
+
   // ── Render Semáforo de Etapas ─────────────────────────────────
   const renderSemaforoBadge = (etapa: 'entrevista' | 'evaluacion' | 'validacion_documental', semaforo: any) => {
     const info = semaforo?.[etapa]
@@ -554,6 +629,18 @@ export default function ReclutamientoView() {
           >
             <Users className="w-4 h-4" />
             Banco de Talento ({candidatos.length})
+          </button>
+
+          <button
+            onClick={() => setActiveTab('fuentes')}
+            className={`pb-3 text-sm font-semibold flex items-center gap-2 border-b-2 transition ${
+              activeTab === 'fuentes'
+                ? 'border-brand-500 text-primary-500 font-bold'
+                : 'border-transparent text-slate-500 hover:text-slate-800'
+            }`}
+          >
+            <Tag className="w-4 h-4" />
+            Fuentes ({fuentes.length})
           </button>
         </div>
       </div>
@@ -949,6 +1036,71 @@ export default function ReclutamientoView() {
                       </td>
                     </tr>
                   ))}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+        </div>
+      )}
+
+      {/* ───────────────────────────────────────────────────────── */}
+      {/* TAB 4: FUENTES DE RECLUTAMIENTO                           */}
+      {/* ───────────────────────────────────────────────────────── */}
+      {activeTab === 'fuentes' && (
+        <div className="space-y-4">
+          <Card className="p-4">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                  <TrendingUp className="w-4 h-4 text-primary-500" /> Embudo de conversión por fuente
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">Candidatos → Preseleccionados → Entrevistados → Contratados</p>
+              </div>
+              <Button
+                variant="primary"
+                className="text-xs flex items-center gap-1.5"
+                onClick={() => setShowNewFuenteModal(true)}
+              >
+                <Plus className="w-4 h-4" /> Nueva Fuente
+              </Button>
+            </div>
+          </Card>
+
+          <Card className="p-0 overflow-hidden border-slate-200">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse text-xs">
+                <thead>
+                  <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase text-[11px] font-semibold">
+                    <th className="p-3.5">Fuente</th>
+                    <th className="p-3.5 text-center">Candidatos</th>
+                    <th className="p-3.5 text-center">Preseleccionados</th>
+                    <th className="p-3.5 text-center">Entrevistados</th>
+                    <th className="p-3.5 text-center">Contratados</th>
+                    <th className="p-3.5 text-center">Conversión</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {indicadores.map((i) => (
+                    <tr key={i.fuente_id} className="hover:bg-slate-50 transition">
+                      <td className="p-3.5 font-semibold text-slate-800">{i.fuente_nombre}</td>
+                      <td className="p-3.5 text-center font-mono">{i.candidatos}</td>
+                      <td className="p-3.5 text-center font-mono text-blue-700">{i.preseleccionados}</td>
+                      <td className="p-3.5 text-center font-mono text-amber-700">{i.entrevistados}</td>
+                      <td className="p-3.5 text-center font-mono text-emerald-700 font-bold">{i.contratados}</td>
+                      <td className="p-3.5 text-center">
+                        <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-700">
+                          {i.tasa_conversion_porcentaje}%
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                  {indicadores.length === 0 && (
+                    <tr>
+                      <td colSpan={6} className="p-8 text-center text-slate-400">
+                        Aún no hay fuentes de reclutamiento configuradas.
+                      </td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>
@@ -1514,6 +1666,276 @@ export default function ReclutamientoView() {
       )}
 
       {/* ───────────────────────────────────────────────────────── */}
+      {/* MODAL: DETALLE DEL CANDIDATO (Banco de Talento)           */}
+      {/* ───────────────────────────────────────────────────────── */}
+      {selectedCandidato && (
+        <Modal
+          open={true}
+          onClose={() => { setSelectedCandidato(null); setEditingCandidato(false) }}
+          title="Perfil del Candidato"
+          maxWidth="48rem"
+        >
+          <div className="space-y-5 text-xs">
+            {/* Encabezado + acciones */}
+            <div className="flex items-start justify-between gap-3 border-b border-slate-100 pb-3">
+              <div>
+                <div className="text-base font-bold text-slate-900">{selectedCandidato.nombre_completo}</div>
+                <div className="text-slate-500 font-mono">
+                  {selectedCandidato.tipo_documento_display} {selectedCandidato.documento} • {selectedCandidato.email}
+                </div>
+                {selectedCandidato.fuente_reclutamiento_nombre && (
+                  <div className="text-slate-400 mt-0.5">Fuente: {selectedCandidato.fuente_reclutamiento_nombre}</div>
+                )}
+              </div>
+              {editingCandidato ? (
+                <div className="flex gap-2 flex-shrink-0">
+                  <Button variant="secondary" className="text-xs" onClick={() => setEditingCandidato(false)}>Cancelar</Button>
+                  <Button variant="primary" className="text-xs" onClick={handleSaveCandidato}>Guardar</Button>
+                </div>
+              ) : (
+                <Button
+                  variant="secondary"
+                  className="text-xs flex items-center gap-1.5 flex-shrink-0"
+                  onClick={() => abrirEdicionCandidato(selectedCandidato)}
+                >
+                  <Pencil className="w-3.5 h-3.5" /> Editar
+                </Button>
+              )}
+            </div>
+
+            {editingCandidato ? (
+              /* ── Modo edición ── */
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-slate-700 font-medium mb-1">Nombres</label>
+                    <input className="w-full p-2 border rounded-lg" value={editCandidatoData.nombres || ''}
+                      onChange={(e) => setEditCandidatoData((p: any) => ({ ...p, nombres: e.target.value }))} />
+                  </div>
+                  <div>
+                    <label className="block text-slate-700 font-medium mb-1">Apellidos</label>
+                    <input className="w-full p-2 border rounded-lg" value={editCandidatoData.apellidos || ''}
+                      onChange={(e) => setEditCandidatoData((p: any) => ({ ...p, apellidos: e.target.value }))} />
+                  </div>
+                  <div>
+                    <label className="block text-slate-700 font-medium mb-1">Correo</label>
+                    <input className="w-full p-2 border rounded-lg" value={editCandidatoData.email || ''}
+                      onChange={(e) => setEditCandidatoData((p: any) => ({ ...p, email: e.target.value }))} />
+                  </div>
+                  <div>
+                    <label className="block text-slate-700 font-medium mb-1">Teléfono</label>
+                    <input className="w-full p-2 border rounded-lg" value={editCandidatoData.telefono || ''}
+                      onChange={(e) => setEditCandidatoData((p: any) => ({ ...p, telefono: e.target.value }))} />
+                  </div>
+                  <div>
+                    <label className="block text-slate-700 font-medium mb-1">Ciudad</label>
+                    <input className="w-full p-2 border rounded-lg" value={editCandidatoData.ciudad || ''}
+                      onChange={(e) => setEditCandidatoData((p: any) => ({ ...p, ciudad: e.target.value }))} />
+                  </div>
+                  <div>
+                    <label className="block text-slate-700 font-medium mb-1">Dirección</label>
+                    <input className="w-full p-2 border rounded-lg" value={editCandidatoData.direccion || ''}
+                      onChange={(e) => setEditCandidatoData((p: any) => ({ ...p, direccion: e.target.value }))} />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-slate-700 font-medium mb-1">Título / Profesión</label>
+                    <input className="w-full p-2 border rounded-lg" value={editCandidatoData.perfil?.titulo_profesional || ''}
+                      onChange={(e) => setEditCandidatoData((p: any) => ({ ...p, perfil: { ...p.perfil, titulo_profesional: e.target.value } }))} />
+                  </div>
+                  <div>
+                    <label className="block text-slate-700 font-medium mb-1">Nivel educativo</label>
+                    <select className="w-full p-2 border rounded-lg" value={editCandidatoData.perfil?.nivel_educativo || ''}
+                      onChange={(e) => setEditCandidatoData((p: any) => ({ ...p, perfil: { ...p.perfil, nivel_educativo: e.target.value } }))}>
+                      <option value="">—</option>
+                      <option value="primaria">Primaria</option>
+                      <option value="bachillerato">Bachillerato</option>
+                      <option value="tecnico">Técnico</option>
+                      <option value="tecnologo">Tecnólogo</option>
+                      <option value="universitario">Universitario</option>
+                      <option value="especializacion">Especialización</option>
+                      <option value="maestria">Maestría</option>
+                      <option value="doctorado">Doctorado</option>
+                      <option value="otro">Otro</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-slate-700 font-medium mb-1">Años de experiencia</label>
+                    <input type="number" min={0} step={0.5} className="w-full p-2 border rounded-lg" value={editCandidatoData.perfil?.anios_experiencia ?? 0}
+                      onChange={(e) => setEditCandidatoData((p: any) => ({ ...p, perfil: { ...p.perfil, anios_experiencia: Number(e.target.value) } }))} />
+                  </div>
+                  <div>
+                    <label className="block text-slate-700 font-medium mb-1">Aspiración salarial</label>
+                    <input type="number" min={0} className="w-full p-2 border rounded-lg" value={editCandidatoData.perfil?.aspiracion_salarial ?? ''}
+                      onChange={(e) => setEditCandidatoData((p: any) => ({ ...p, perfil: { ...p.perfil, aspiracion_salarial: e.target.value ? Number(e.target.value) : null } }))} />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-slate-700 font-medium mb-1">Resumen profesional</label>
+                  <textarea rows={3} className="w-full p-2 border rounded-lg" value={editCandidatoData.perfil?.resumen_profesional || ''}
+                    onChange={(e) => setEditCandidatoData((p: any) => ({ ...p, perfil: { ...p.perfil, resumen_profesional: e.target.value } }))} />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-slate-700 font-medium mb-1">Competencias (separadas por coma)</label>
+                    <input className="w-full p-2 border rounded-lg"
+                      value={Array.isArray(editCandidatoData.perfil?.competencias) ? editCandidatoData.perfil.competencias.join(', ') : ''}
+                      onChange={(e) => setEditCandidatoData((p: any) => ({ ...p, perfil: { ...p.perfil, competencias: e.target.value.split(',').map((s: string) => s.trim()).filter(Boolean) } }))} />
+                  </div>
+                  <div>
+                    <label className="block text-slate-700 font-medium mb-1">Certificaciones / Licencias (separadas por coma)</label>
+                    <input className="w-full p-2 border rounded-lg"
+                      value={Array.isArray(editCandidatoData.perfil?.certificaciones) ? editCandidatoData.perfil.certificaciones.join(', ') : ''}
+                      onChange={(e) => setEditCandidatoData((p: any) => ({ ...p, perfil: { ...p.perfil, certificaciones: e.target.value.split(',').map((s: string) => s.trim()).filter(Boolean) } }))} />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-slate-700 font-medium mb-1">Notas internas</label>
+                  <textarea rows={2} className="w-full p-2 border rounded-lg" value={editCandidatoData.notas_internas || ''}
+                    onChange={(e) => setEditCandidatoData((p: any) => ({ ...p, notas_internas: e.target.value }))} />
+                </div>
+              </div>
+            ) : (
+              /* ── Modo lectura ── */
+              <div className="space-y-5">
+                {/* Datos personales */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <div><div className="text-slate-400">Teléfono</div><div className="font-medium text-slate-800">{selectedCandidato.telefono || '—'}</div></div>
+                  <div><div className="text-slate-400">Ciudad</div><div className="font-medium text-slate-800">{selectedCandidato.ciudad || '—'}</div></div>
+                  <div><div className="text-slate-400">Dirección</div><div className="font-medium text-slate-800">{selectedCandidato.direccion || '—'}</div></div>
+                  <div><div className="text-slate-400">Habeas Data</div><div className="font-medium text-slate-800">{selectedCandidato.autoriza_tratamiento_datos ? 'Autorizado' : 'Sin autorizar'}</div></div>
+                </div>
+
+                {/* Perfil profesional */}
+                <div className="bg-slate-50 rounded-lg p-4 space-y-3">
+                  <div className="font-bold text-slate-800 flex items-center gap-2"><Award className="w-4 h-4 text-primary-500" /> Perfil Profesional</div>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                    <div><div className="text-slate-400">Título</div><div className="font-medium text-slate-800">{selectedCandidato.perfil?.titulo_profesional || '—'}</div></div>
+                    <div><div className="text-slate-400">Nivel educativo</div><div className="font-medium text-slate-800">{selectedCandidato.perfil?.nivel_educativo || '—'}</div></div>
+                    <div><div className="text-slate-400">Experiencia</div><div className="font-medium text-slate-800">{selectedCandidato.perfil?.anios_experiencia ?? 0} años</div></div>
+                    <div><div className="text-slate-400">Aspiración salarial</div><div className="font-medium text-slate-800">{selectedCandidato.perfil?.aspiracion_salarial ? `$${Number(selectedCandidato.perfil.aspiracion_salarial).toLocaleString('es-CO')}` : '—'}</div></div>
+                    <div><div className="text-slate-400">Disponibilidad viaje</div><div className="font-medium text-slate-800">{selectedCandidato.perfil?.disponibilidad_viaje ? 'Sí' : 'No'}</div></div>
+                    <div><div className="text-slate-400">Disponibilidad traslado</div><div className="font-medium text-slate-800">{selectedCandidato.perfil?.disponibilidad_traslado ? 'Sí' : 'No'}</div></div>
+                  </div>
+                  {selectedCandidato.perfil?.resumen_profesional && (
+                    <div><div className="text-slate-400 mb-1">Resumen</div><p className="text-slate-700">{selectedCandidato.perfil.resumen_profesional}</p></div>
+                  )}
+                  {!!selectedCandidato.perfil?.competencias?.length && (
+                    <div>
+                      <div className="text-slate-400 mb-1">Competencias</div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {selectedCandidato.perfil.competencias.map((c, i) => (
+                          <span key={i} className="px-2 py-0.5 rounded-full bg-white border border-slate-200 text-slate-700">{c}</span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {!!selectedCandidato.perfil?.certificaciones?.length && (
+                    <div>
+                      <div className="text-slate-400 mb-1">Certificaciones / Licencias</div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {selectedCandidato.perfil.certificaciones.map((c, i) => (
+                          <span key={i} className="px-2 py-0.5 rounded-full bg-white border border-slate-200 text-slate-700">{c}</span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Documentos */}
+                <div>
+                  <div className="font-bold text-slate-800 flex items-center gap-2 mb-2"><FileText className="w-4 h-4 text-primary-500" /> Documentos ({selectedCandidato.documentos?.length || 0})</div>
+                  {selectedCandidato.documentos?.length ? (
+                    <ul className="space-y-1.5">
+                      {selectedCandidato.documentos.map((d) => (
+                        <li key={d.id} className="flex items-center justify-between bg-slate-50 rounded-lg px-3 py-2">
+                          <span className="text-slate-700">{d.tipo_documento_display}: <span className="font-medium">{d.nombre_descriptivo || d.archivo_nombre || 'Documento'}</span></span>
+                          {d.archivo_url && (
+                            <a href={d.archivo_url} target="_blank" rel="noopener noreferrer" className="text-primary-500 hover:underline flex items-center gap-1">
+                              Ver <ExternalLink className="w-3 h-3" />
+                            </a>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <div className="text-slate-400">Sin documentos cargados.</div>
+                  )}
+                </div>
+
+                {/* Historial de postulaciones */}
+                <div>
+                  <div className="font-bold text-slate-800 flex items-center gap-2 mb-2"><GitPullRequest className="w-4 h-4 text-primary-500" /> Historial de Postulaciones ({selectedCandidato.historial_postulaciones?.length || 0})</div>
+                  {selectedCandidato.historial_postulaciones?.length ? (
+                    <div className="overflow-x-auto border border-slate-100 rounded-lg">
+                      <table className="w-full text-left border-collapse text-xs">
+                        <thead>
+                          <tr className="bg-slate-50 text-slate-500 uppercase text-[10px] font-semibold">
+                            <th className="p-2.5">Vacante</th>
+                            <th className="p-2.5">Estado</th>
+                            <th className="p-2.5">Fecha</th>
+                            <th className="p-2.5 text-right">Puntaje</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {selectedCandidato.historial_postulaciones.map((h) => (
+                            <tr key={h.id}>
+                              <td className="p-2.5">
+                                <div className="font-mono text-slate-500">{h.vacante_codigo}</div>
+                                <div className="font-medium text-slate-800">{h.vacante_titulo}</div>
+                              </td>
+                              <td className="p-2.5">{renderEstadoBadge(h.estado)}</td>
+                              <td className="p-2.5 text-slate-600">{new Date(h.fecha_postulacion).toLocaleDateString('es-CO')}</td>
+                              <td className="p-2.5 text-right font-mono text-slate-700">{h.puntuacion_general ?? '—'}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <div className="text-slate-400">Sin postulaciones registradas.</div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        </Modal>
+      )}
+
+      {/* ───────────────────────────────────────────────────────── */}
+      {/* MODAL: NUEVA FUENTE DE RECLUTAMIENTO                     */}
+      {/* ───────────────────────────────────────────────────────── */}
+      {showNewFuenteModal && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <Card className="max-w-md w-full p-6 space-y-4 bg-white shadow-2xl">
+            <h3 className="text-base font-bold text-slate-900">Nueva Fuente de Reclutamiento</h3>
+            <div className="space-y-3 text-xs">
+              <div>
+                <label className="block text-slate-700 font-medium mb-1">Nombre</label>
+                <input className="w-full p-2 border rounded-lg" value={newFuenteData.nombre}
+                  onChange={(e) => setNewFuenteData((p) => ({ ...p, nombre: e.target.value }))}
+                  placeholder="Ej: LinkedIn, Servicio Público de Empleo, Referido" />
+              </div>
+              <div>
+                <label className="block text-slate-700 font-medium mb-1">Descripción</label>
+                <textarea rows={2} className="w-full p-2 border rounded-lg" value={newFuenteData.descripcion}
+                  onChange={(e) => setNewFuenteData((p) => ({ ...p, descripcion: e.target.value }))} />
+              </div>
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="secondary" className="text-xs" onClick={() => setShowNewFuenteModal(false)}>Cancelar</Button>
+              <Button variant="primary" className="text-xs" onClick={handleCreateFuente}>Guardar Fuente</Button>
+            </div>
+          </Card>
+        </div>
+      )}
+
+      {/* ───────────────────────────────────────────────────────── */}
       {/* MODAL: NUEVO CANDIDATO                                    */}
       {/* ───────────────────────────────────────────────────────── */}
       {showNewCandidatoModal && (
@@ -1598,6 +2020,49 @@ export default function ReclutamientoView() {
                   onChange={(e) => setNewCandidatoData(p => ({ ...p, titulo_profesional: e.target.value }))}
                   className="w-full p-2 border rounded-lg"
                   placeholder="Ej: Ingeniero SST, Tecnólogo en Alturas"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-slate-700 font-medium mb-1">Ciudad:</label>
+                  <input
+                    type="text"
+                    value={newCandidatoData.ciudad}
+                    onChange={(e) => setNewCandidatoData(p => ({ ...p, ciudad: e.target.value }))}
+                    className="w-full p-2 border rounded-lg"
+                    placeholder="Ej: Popayán"
+                  />
+                </div>
+                <div>
+                  <label className="block text-slate-700 font-medium mb-1">Nivel Educativo:</label>
+                  <select
+                    value={newCandidatoData.nivel_educativo}
+                    onChange={(e) => setNewCandidatoData(p => ({ ...p, nivel_educativo: e.target.value }))}
+                    className="w-full p-2 border rounded-lg"
+                  >
+                    <option value="primaria">Primaria</option>
+                    <option value="bachillerato">Bachillerato</option>
+                    <option value="tecnico">Técnico</option>
+                    <option value="tecnologo">Tecnólogo</option>
+                    <option value="universitario">Universitario</option>
+                    <option value="especializacion">Especialización</option>
+                    <option value="maestria">Maestría</option>
+                    <option value="doctorado">Doctorado</option>
+                    <option value="otro">Otro</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-slate-700 font-medium mb-1">Años de Experiencia:</label>
+                <input
+                  type="number"
+                  min={0}
+                  step={0.5}
+                  value={newCandidatoData.anios_experiencia}
+                  onChange={(e) => setNewCandidatoData(p => ({ ...p, anios_experiencia: Number(e.target.value) }))}
+                  className="w-full p-2 border rounded-lg"
                 />
               </div>
 

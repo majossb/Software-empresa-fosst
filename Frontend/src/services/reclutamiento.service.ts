@@ -15,6 +15,7 @@ import {
   VacantePublicaListItem,
   VacantePublicaDetail,
   PostulacionCandidatoPublica,
+  IndicadorFuente,
 } from '@/types/reclutamiento.types'
 
 const CANDIDATE_TOKEN_KEY = 'candidate_portal_token'
@@ -57,6 +58,10 @@ export const reclutamientoService = {
 
   createFuente: (data: { nombre: string; descripcion?: string }) => {
     return apiClient.post<FuenteReclutamiento>('/reclutamiento/fuentes/', data)
+  },
+
+  getIndicadoresFuentes: () => {
+    return apiClient.get<IndicadorFuente[]>('/reclutamiento/fuentes/indicadores-efectividad/')
   },
 
   // ── 3. Vacantes ──────────────────────────────────────────────

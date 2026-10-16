@@ -81,6 +81,16 @@ export interface PerfilCandidato {
   updated_at?: string
 }
 
+export interface IndicadorFuente {
+  fuente_id: string
+  fuente_nombre: string
+  candidatos: number
+  preseleccionados: number
+  entrevistados: number
+  contratados: number
+  tasa_conversion_porcentaje: number
+}
+
 export interface CandidatoDocumento {
   id: string
   archivo: string
