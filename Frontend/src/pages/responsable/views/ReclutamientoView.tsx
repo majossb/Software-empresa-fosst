@@ -65,6 +65,7 @@ export default function ReclutamientoView() {
   const [vacantes, setVacantes] = useState<VacanteListItem[]>([])
   const [perfilesCargo, setPerfilesCargo] = useState<any[]>([])
   const [showNewVacanteModal, setShowNewVacanteModal] = useState(false)
+  const [editingVacanteId, setEditingVacanteId] = useState<string | null>(null)
   const [newVacanteData, setNewVacanteData] = useState({
     perfil_cargo: '',
     titulo: '',
@@ -337,6 +338,51 @@ export default function ReclutamientoView() {
     }
   }
 
+  const abrirNuevaVacante = () => {
+    setEditingVacanteId(null)
+    setNewVacanteData({
+      perfil_cargo: '',
+      titulo: '',
+      descripcion_publica: '',
+      numero_cupos: 1,
+      tipo_contrato: 'Termino Indefinido',
+      modalidad: 'presencial',
+      rango_salarial_min: '',
+      rango_salarial_max: '',
+      mostrar_salario_publico: true,
+      auto_crear_proceso: true,
+      requiere_entrevista: true,
+      requiere_evaluacion: true,
+      requiere_validacion_documental: true,
+    })
+    setShowNewVacanteModal(true)
+  }
+
+  const abrirEdicionVacante = async (id: string) => {
+    try {
+      const v = await reclutamientoService.getVacanteById(id)
+      setNewVacanteData({
+        perfil_cargo: v.perfil_cargo,
+        titulo: v.titulo,
+        descripcion_publica: v.descripcion_publica || '',
+        numero_cupos: v.numero_cupos,
+        tipo_contrato: v.tipo_contrato || 'Termino Indefinido',
+        modalidad: v.modalidad,
+        rango_salarial_min: v.rango_salarial_min != null ? String(v.rango_salarial_min) : '',
+        rango_salarial_max: v.rango_salarial_max != null ? String(v.rango_salarial_max) : '',
+        mostrar_salario_publico: v.mostrar_salario_publico,
+        auto_crear_proceso: true,
+        requiere_entrevista: v.proceso_seleccion?.requiere_entrevista ?? true,
+        requiere_evaluacion: v.proceso_seleccion?.requiere_evaluacion ?? true,
+        requiere_validacion_documental: v.proceso_seleccion?.requiere_validacion_documental ?? true,
+      })
+      setEditingVacanteId(id)
+      setShowNewVacanteModal(true)
+    } catch (err: any) {
+      alert(errMsg(err, 'No se pudo cargar la vacante.'))
+    }
+  }
+
   const handleCreateVacante = async () => {
     if (!newVacanteData.perfil_cargo || !newVacanteData.titulo.trim()) {
       alert('Perfil de cargo y título son obligatorios')
@@ -361,17 +407,23 @@ export default function ReclutamientoView() {
       alert('El salario mínimo no puede ser mayor que el salario máximo')
       return
     }
+    const payload = {
+      ...newVacanteData,
+      numero_cupos: cupos,
+      rango_salarial_min: newVacanteData.rango_salarial_min || null,
+      rango_salarial_max: newVacanteData.rango_salarial_max || null,
+    }
     try {
-      await reclutamientoService.createVacante({
-        ...newVacanteData,
-        numero_cupos: cupos,
-        rango_salarial_min: newVacanteData.rango_salarial_min || null,
-        rango_salarial_max: newVacanteData.rango_salarial_max || null,
-      })
+      if (editingVacanteId) {
+        await reclutamientoService.updateVacante(editingVacanteId, payload)
+      } else {
+        await reclutamientoService.createVacante(payload)
+      }
       setShowNewVacanteModal(false)
+      setEditingVacanteId(null)
       cargarDatos()
     } catch (err: any) {
-      alert(err.message || 'Error al crear vacante')
+      alert(errMsg(err, editingVacanteId ? 'Error al actualizar vacante' : 'Error al crear vacante'))
     }
   }
 
@@ -592,7 +644,7 @@ export default function ReclutamientoView() {
             <Button
               variant="primary"
               className="text-xs flex items-center gap-1.5"
-              onClick={() => setShowNewVacanteModal(true)}
+              onClick={abrirNuevaVacante}
             >
               <Plus className="w-4 h-4" />
               Nueva Vacante
@@ -1009,6 +1061,14 @@ export default function ReclutamientoView() {
                         className="text-xs px-2.5 py-1 rounded bg-rose-50 text-rose-700 hover:bg-rose-100 font-medium"
                       >
                         Cerrar
+                      </button>
+                    )}
+                    {!['cubierta', 'cerrada'].includes(v.estado) && (
+                      <button
+                        onClick={() => abrirEdicionVacante(v.id)}
+                        className="text-xs px-2.5 py-1 rounded bg-slate-100 text-slate-700 hover:bg-slate-200 font-medium"
+                      >
+                        Editar
                       </button>
                     )}
                   </div>
@@ -1711,7 +1771,9 @@ export default function ReclutamientoView() {
       {showNewVacanteModal && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <Card className="max-w-lg w-full p-6 space-y-4 bg-white max-h-[90vh] overflow-y-auto shadow-2xl">
-            <h3 className="text-base font-bold text-slate-900">Crear Requerimiento / Vacante</h3>
+            <h3 className="text-base font-bold text-slate-900">
+              {editingVacanteId ? 'Editar Requerimiento / Vacante' : 'Crear Requerimiento / Vacante'}
+            </h3>
 
             <div className="space-y-3 text-xs">
               <div>
@@ -1865,11 +1927,11 @@ export default function ReclutamientoView() {
             </div>
 
             <div className="flex justify-end gap-2 pt-2">
-              <Button variant="secondary" className="text-xs" onClick={() => setShowNewVacanteModal(false)}>
+              <Button variant="secondary" className="text-xs" onClick={() => { setShowNewVacanteModal(false); setEditingVacanteId(null) }}>
                 Cancelar
               </Button>
               <Button variant="primary" className="text-xs" onClick={handleCreateVacante}>
-                Crear Vacante
+                {editingVacanteId ? 'Guardar Cambios' : 'Crear Vacante'}
               </Button>
             </div>
           </Card>

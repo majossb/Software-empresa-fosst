@@ -239,6 +239,75 @@ class FaseFVacanteEtapasTestCase(APITestCase):
         self.assertFalse(proceso.requiere_validacion_documental)
 
 
+class FaseFFlujoCompletoTestCase(APITestCase):
+    """Flujo end-to-end: vacante (sin etapas) -> postular -> preseleccionar -> seleccionar -> cubierta."""
+
+    def setUp(self):
+        self.empresa = _crear_empresa("900000041-1", "Empresa Flujo")
+        self.user = Usuario.objects.create_user(
+            username="flujo", email="flujo@a.com", password="Password123!",
+            rol=UserRole.RESPONSABLE, empresa=self.empresa, activo=True, is_active=True,
+        )
+        # Perfil de cargo SIN educacion/experiencia para no exigir requisitos obligatorios
+        self.cargo = PerfilCargo.objects.create(
+            empresa=self.empresa, codigo="PC-FLUJO", nombre_cargo="Operario",
+        )
+        self.client.force_authenticate(user=self.user)
+
+    def test_flujo_completo_seleccion_cubre_vacante(self):
+        # 1. Crear vacante sin etapas obligatorias
+        res_v = self.client.post(
+            "/api/reclutamiento/vacantes/",
+            {
+                "perfil_cargo": str(self.cargo.id),
+                "titulo": "Operario de Planta",
+                "numero_cupos": 1,
+                "requiere_entrevista": False,
+                "requiere_evaluacion": False,
+                "requiere_validacion_documental": False,
+            },
+            format="json",
+        )
+        self.assertEqual(res_v.status_code, status.HTTP_201_CREATED)
+        vacante_id = res_v.data["id"]
+        proceso = ProcesoSeleccion.objects.get(vacante_id=vacante_id)
+
+        # 2. Crear candidato en el banco y postularlo al proceso
+        candidato = Candidato.objects.create(
+            empresa=self.empresa, documento="FL1", nombres="Juan", apellidos="Flujo",
+            email="juan.flujo@mail.com",
+        )
+        res_p = self.client.post(
+            f"/api/reclutamiento/procesos/{proceso.id}/postular/",
+            {"candidato_id": str(candidato.id)},
+            format="json",
+        )
+        self.assertEqual(res_p.status_code, status.HTTP_201_CREATED)
+        postulacion_id = res_p.data["id"]
+
+        # 3. Preseleccionar (sin requisitos obligatorios)
+        res_pre = self.client.post(
+            f"/api/reclutamiento/postulaciones/{postulacion_id}/preseleccionar/",
+            {"calificacion_requisitos": {}, "puntuacion": 85},
+            format="json",
+        )
+        self.assertEqual(res_pre.status_code, status.HTTP_200_OK)
+        self.assertEqual(res_pre.data["estado"], Postulacion.Estado.PRESELECCIONADO)
+
+        # 4. Seleccionar (no exige etapas) -> cubre la vacante
+        res_sel = self.client.post(
+            f"/api/reclutamiento/postulaciones/{postulacion_id}/seleccionar/",
+            {"notas_finales": "Aprobado en el proceso"},
+            format="json",
+        )
+        self.assertEqual(res_sel.status_code, status.HTTP_200_OK)
+        self.assertEqual(res_sel.data["estado"], Postulacion.Estado.SELECCIONADO)
+
+        vacante = Vacante.objects.get(id=vacante_id)
+        self.assertEqual(vacante.numero_seleccionados, 1)
+        self.assertEqual(vacante.estado, Vacante.Estado.CUBIERTA)
+
+
 class FaseFPortalPerfilTestCase(APITestCase):
     """El candidato autenticado puede actualizar su perfil desde el portal."""
 
