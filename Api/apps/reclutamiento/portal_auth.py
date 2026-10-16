@@ -31,6 +31,7 @@ class CandidateTokenAuthentication(BaseAuthentication):
         ahora = timezone.now()
         token_obj = TokenAccesoCandidato.objects.filter(
             token=token_str,
+            usado=False,
             expira_en__gte=ahora,
         ).select_related("candidato", "candidato__empresa").first()
 

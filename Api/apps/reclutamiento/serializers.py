@@ -428,7 +428,22 @@ class VacanteCreateUpdateSerializer(serializers.ModelSerializer):
 # -----------------------------------------------------------------------------
 # 5. Entrevistas, Evaluaciones y Validaciones
 # -----------------------------------------------------------------------------
-class EntrevistaSerializer(serializers.ModelSerializer):
+class _ScopedPostulacionMixin:
+    """
+    RN-R10: Acota el campo `postulacion` a la empresa del usuario autenticado,
+    evitando que un sub-recurso (entrevista/evaluación/validación) se enlace a
+    una postulación de otra empresa (IDOR entre tenants).
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        request = self.context.get("request") if getattr(self, "context", None) else None
+        empresa = getattr(getattr(request, "user", None), "empresa", None)
+        if empresa is not None and "postulacion" in self.fields:
+            self.fields["postulacion"].queryset = Postulacion.objects.filter(empresa=empresa)
+
+
+class EntrevistaSerializer(_ScopedPostulacionMixin, serializers.ModelSerializer):
     tipo_entrevista_display = serializers.CharField(source="get_tipo_entrevista_display", read_only=True)
     modalidad_display = serializers.CharField(source="get_modalidad_display", read_only=True)
     estado_display = serializers.CharField(source="get_estado_display", read_only=True)
@@ -467,7 +482,7 @@ class EntrevistaSerializer(serializers.ModelSerializer):
         return ""
 
 
-class EvaluacionSerializer(serializers.ModelSerializer):
+class EvaluacionSerializer(_ScopedPostulacionMixin, serializers.ModelSerializer):
     tipo_evaluacion_display = serializers.CharField(source="get_tipo_evaluacion_display", read_only=True)
     estado_display = serializers.CharField(source="get_estado_display", read_only=True)
     porcentaje_obtenido = serializers.FloatField(read_only=True)
@@ -511,7 +526,7 @@ class EvaluacionSerializer(serializers.ModelSerializer):
         return None
 
 
-class ValidacionDocumentalSerializer(serializers.ModelSerializer):
+class ValidacionDocumentalSerializer(_ScopedPostulacionMixin, serializers.ModelSerializer):
     tipo_verificacion_display = serializers.CharField(source="get_tipo_verificacion_display", read_only=True)
     estado_display = serializers.CharField(source="get_estado_display", read_only=True)
     verificado_por_nombre = serializers.SerializerMethodField()

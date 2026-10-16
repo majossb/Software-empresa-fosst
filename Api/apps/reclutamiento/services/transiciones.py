@@ -106,9 +106,16 @@ def validar_preseleccion(postulacion: Postulacion, contexto: Optional[Dict[str, 
 
     faltantes = []
     for req in requisitos_obligatorios:
-        req_id = req.get("id") or req.get("nombre") or str(req)
-        nombre_req = req.get("nombre") or str(req)
-        cumplido = calificacion_requisitos.get(req_id, {}).get("cumple", False) if isinstance(calificacion_requisitos.get(req_id), dict) else calificacion_requisitos.get(req_id, False)
+        # Los requisitos pueden venir como dict ({id, nombre, ...}) o como string simple
+        if isinstance(req, dict):
+            req_id = req.get("id") or req.get("nombre") or str(req)
+            nombre_req = req.get("nombre") or req_id
+        else:
+            req_id = str(req)
+            nombre_req = str(req)
+
+        calificacion = calificacion_requisitos.get(req_id, False)
+        cumplido = calificacion.get("cumple", False) if isinstance(calificacion, dict) else bool(calificacion)
         if not cumplido:
             faltantes.append(nombre_req)
 
