@@ -71,7 +71,10 @@ export interface PerfilCargoListItem {
   version_actual: number
   sede: string | null
   sede_id: string | null
-  trabajadores_vinculados: number
+  activo?: boolean
+  trabajadores_count?: number
+  vacantes_activas_count?: number
+  procesos_activos_count?: number
 }
 
 export interface PerfilCargoDetail {
@@ -112,10 +115,11 @@ export interface PerfilCargoDetail {
 // ── Objeto del Servicio ──────────────────────────────────────────────
 export const modulo1Service = {
   // CRUD Perfiles
-  listPerfiles: (filters?: { area?: string; sede_id?: string }) => {
+  listPerfiles: (filters?: { area?: string; sede_id?: string; incluir_inactivos?: boolean }) => {
     const query = new URLSearchParams()
     if (filters?.area) query.append('area', filters.area)
     if (filters?.sede_id) query.append('sede_id', filters.sede_id)
+    if (filters?.incluir_inactivos) query.append('incluir_inactivos', 'true')
     const queryString = query.toString()
     return apiClient.get<PerfilCargoListItem[]>(`/modulo1/perfil-cargo${queryString ? `?${queryString}` : ''}`)
   },
@@ -129,6 +133,7 @@ export const modulo1Service = {
     apiClient.put<PerfilCargoDetail>(`/modulo1/perfil-cargo/${id}`, data),
 
   deletePerfil: (id: string) => apiClient.delete<{ message: string }>(`/modulo1/perfil-cargo/${id}`),
+  reactivarPerfil: (id: string) => apiClient.post<{ message: string; id: string; activo: boolean }>(`/modulo1/perfil-cargo/${id}/reactivar`, {}),
 
   // Historial de Versiones
   getVersiones: (id: string) => apiClient.get<CargoVersion[]>(`/modulo1/perfil-cargo/${id}/versiones`),

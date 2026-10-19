@@ -109,6 +109,8 @@ class PerfilCargoSerializer(serializers.ModelSerializer):
     suplentes = CargoSuplenteSerializer(many=True, read_only=True)
     versiones = CargoVersionSerializer(many=True, read_only=True)
     trabajadores_count = serializers.IntegerField(read_only=True)
+    vacantes_activas_count = serializers.IntegerField(read_only=True, default=0)
+    procesos_activos_count = serializers.IntegerField(read_only=True, default=0)
 
     class Meta:
         model = PerfilCargo

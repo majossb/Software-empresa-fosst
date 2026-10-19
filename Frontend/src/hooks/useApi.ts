@@ -217,7 +217,7 @@ export function useInforme(id: string | null) {
 }
 
 // ── Módulo 1: Perfiles de Cargo ──────────────────────────────────────────
-export function usePerfilesCargo(filters?: { area?: string; sede_id?: string }) {
+export function usePerfilesCargo(filters?: { area?: string; sede_id?: string; incluir_inactivos?: boolean }) {
   return useQuery({
     queryKey: ['perfiles-cargo', filters],
     queryFn: () => modulo1Service.listPerfiles(filters),
@@ -258,6 +258,16 @@ export function useEliminarPerfilCargo() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: modulo1Service.deletePerfil,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['perfiles-cargo'] })
+    },
+  })
+}
+
+export function useReactivarPerfilCargo() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: modulo1Service.reactivarPerfil,
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['perfiles-cargo'] })
     },

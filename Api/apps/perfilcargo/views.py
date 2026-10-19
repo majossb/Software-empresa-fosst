@@ -39,19 +39,36 @@ class PerfilCargoListView(APIView):
 
         area = request.query_params.get('area')
         sede_id = request.query_params.get('sede_id')
+        incluir_inactivos = request.query_params.get('incluir_inactivos') in ('1', 'true', 'True', 'all')
 
-        queryset = PerfilCargo.objects.filter(empresa=empresa, activo=True)
+        queryset = PerfilCargo.objects.filter(empresa=empresa)
+        if not incluir_inactivos:
+            queryset = queryset.filter(activo=True)
         if area:
             queryset = queryset.filter(area=area)
         if sede_id:
             queryset = queryset.filter(sede_id=sede_id)
 
-        # Annotate worker count using the correct 'trabajadores' related name
+        # Conteos para salvaguardas de inhabilitación
         queryset = queryset.annotate(
             trabajadores_count=Count(
                 'trabajadores',
-                filter=Q(trabajadores__activo=True, trabajadores__deleted_at__isnull=True)
-            )
+                filter=Q(trabajadores__activo=True, trabajadores__deleted_at__isnull=True),
+                distinct=True,
+            ),
+            vacantes_activas_count=Count(
+                'vacantes',
+                filter=Q(
+                    vacantes__estado__in=['abierta', 'pausada', 'borrador'],
+                    vacantes__deleted_at__isnull=True,
+                ),
+                distinct=True,
+            ),
+            procesos_activos_count=Count(
+                'vacantes__proceso_seleccion',
+                filter=Q(vacantes__proceso_seleccion__estado='activo'),
+                distinct=True,
+            ),
         )
 
         queryset = queryset.order_by('codigo')
@@ -389,10 +406,38 @@ class PerfilCargoDetailView(APIView):
             active_workers = Trabajador.objects.filter(perfil_cargo=perfil, activo=True, deleted_at__isnull=True).count()
             if active_workers > 0:
                 return Response(
-                    {"error": f"No se puede eliminar el perfil porque hay {active_workers} trabajador(es) activo(s) vinculado(s) al mismo."},
+                    {"error": f"No se puede inhabilitar el perfil porque hay {active_workers} trabajador(es) activo(s) vinculado(s) al mismo."},
                     status=status.HTTP_409_CONFLICT
                 )
-                
+
+            # Check for active vacancies / selection processes linked to the profile
+            from apps.reclutamiento.models import Vacante, ProcesoSeleccion
+
+            vacantes_activas = Vacante.objects.filter(
+                perfil_cargo=perfil,
+                estado__in=[
+                    Vacante.Estado.BORRADOR,
+                    Vacante.Estado.ABIERTA,
+                    Vacante.Estado.PAUSADA,
+                ],
+                deleted_at__isnull=True,
+            ).count()
+            if vacantes_activas > 0:
+                return Response(
+                    {"error": f"No se puede inhabilitar el perfil porque tiene {vacantes_activas} vacante(s) activa(s) asociada(s). Ciérralas primero."},
+                    status=status.HTTP_409_CONFLICT
+                )
+
+            procesos_activos = ProcesoSeleccion.objects.filter(
+                vacante__perfil_cargo=perfil,
+                estado=ProcesoSeleccion.Estado.ACTIVO,
+            ).count()
+            if procesos_activos > 0:
+                return Response(
+                    {"error": f"No se puede inhabilitar el perfil porque tiene {procesos_activos} proceso(s) de selección activo(s). Finalízalos primero."},
+                    status=status.HTTP_409_CONFLICT
+                )
+
             perfil.activo = False
             perfil.save()
 
@@ -407,6 +452,37 @@ class PerfilCargoDetailView(APIView):
             return Response({"message": "Perfil de cargo inhabilitado correctamente."})
         except PerfilCargo.DoesNotExist:
             return Response(status=status.HTTP_404_NOT_FOUND)
+
+
+class ReactivarPerfilCargoView(APIView):
+    """Reactiva un perfil de cargo previamente inhabilitado (soft-delete reversible)."""
+    permission_classes = [IsAuthenticated, IsRolParaEscritura.de("responsable", "alta_direccion")]
+
+    def post(self, request, pk):
+        empresa = request.user.empresa
+        if not empresa:
+            return Response({"message": "Sin empresa asociada."}, status=400)
+        try:
+            perfil = PerfilCargo.objects.get(pk=pk, empresa=empresa)
+        except PerfilCargo.DoesNotExist:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+
+        perfil.activo = True
+        perfil.save(update_fields=["activo"])
+
+        from apps.auditoria.helpers import registrar_audit_log
+        registrar_audit_log(
+            request,
+            "REACTIVAR_PERFIL_CARGO",
+            tabla_afectada="perfiles_cargo",
+            registro_id=perfil.id,
+        )
+
+        return Response({
+            "message": "Perfil de cargo reactivado correctamente.",
+            "id": str(perfil.id),
+            "activo": True,
+        })
 
 
 class PerfilCargoVersionesView(APIView):

@@ -148,6 +148,11 @@ function normalizeApiError(
   if (data && typeof data === 'object') {
     const d = data as Record<string, unknown>
 
+    // Campo `error` directo (respuestas propias del backend)
+    if (typeof d.error === 'string') {
+      return { message: d.error, code: (d.code as string) ?? 'SERVER_ERROR' }
+    }
+
     // Campo `message` o `detail` directos
     if (typeof d.message === 'string') {
       return { message: d.message, code: (d.code as string) ?? 'SERVER_ERROR' }
