@@ -95,7 +95,7 @@ export default function ReclutamientoView() {
     requiere_entrevista: true,
     requiere_evaluacion: true,
     requiere_validacion_documental: true,
-    documentos_requeridos: [] as string[],
+    documentos_requeridos: ['hoja_de_vida'] as string[],
   })
 
   // ── Tab 3: Procesos de Selección & Pipeline ───────────────────
@@ -456,7 +456,7 @@ export default function ReclutamientoView() {
       requiere_entrevista: true,
       requiere_evaluacion: true,
       requiere_validacion_documental: true,
-      documentos_requeridos: [],
+      documentos_requeridos: ['hoja_de_vida'],
     })
     setShowNewVacanteModal(true)
   }
