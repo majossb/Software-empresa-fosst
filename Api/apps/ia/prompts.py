@@ -190,9 +190,64 @@ def prompt_recomendacion_brecha(contexto: dict) -> dict:
     return {"prompt": prompt, "output_schema": output_schema}
 
 
+def prompt_informe_gerencial_reclutamiento(contexto: dict) -> dict:
+    """
+    Genera un informe gerencial de resultados de reclutamiento por vacante.
+
+    Contexto esperado: métricas AGREGADAS y anonimizadas (sin PII):
+      empresa_nombre, vacante_codigo, vacante_titulo, perfil_cargo,
+      postulaciones, fuentes, perfiles, entrevistas, evaluaciones,
+      validaciones, documentos, tiempos.
+    """
+    import json as _json
+
+    datos = _json.dumps(contexto, ensure_ascii=False, default=str, indent=2)
+
+    prompt = (
+        "Actúa como un analista senior de talento humano y gestión organizacional. "
+        "Redacta un INFORME GERENCIAL de resultados de un proceso de Reclutamiento & Selección "
+        "para presentar a la alta dirección.\n\n"
+        "Reglas obligatorias:\n"
+        "- Usa SOLO los datos agregados proporcionados; NO inventes cifras ni candidatos.\n"
+        "- NO incluyas nombres, documentos, correos, teléfonos ni datos personales.\n"
+        "- Garantiza confidencialidad y protección de datos (Ley 1581 de 2012).\n"
+        "- Redacta en español, tono ejecutivo, claro; máximo 2 párrafos por sección.\n"
+        "- No emitas decisiones de contratación: el informe apoya, no decide.\n\n"
+        f"Datos agregados (JSON):\n{datos}\n\n"
+        "La respuesta DEBE ser EXCLUSIVAMENTE un objeto JSON válido, sin texto adicional, "
+        "con esta estructura exacta:\n"
+        "{\n"
+        '  "resumen_ejecutivo": "Síntesis de 3-4 oraciones para gerencia.",\n'
+        '  "hallazgos_clave": ["Hallazgo 1", "Hallazgo 2", "Hallazgo 3"],\n'
+        '  "analisis_fuentes": "Qué fuentes aportaron más y su efectividad.",\n'
+        '  "analisis_perfiles": "Tendencias de los perfiles que postularon (sin datos personales).",\n'
+        '  "resultados_entrevistas": "Resultados generales de entrevistas y evaluaciones.",\n'
+        '  "tiempos_y_eficiencia": "Lectura de los tiempos del proceso.",\n'
+        '  "riesgos": ["Riesgo 1", "Riesgo 2"],\n'
+        '  "recomendaciones": ["Recomendación 1", "Recomendación 2", "Recomendación 3"],\n'
+        '  "conclusion_para_gerencia": "Conclusión y siguiente paso sugerido."\n'
+        "}"
+    )
+
+    output_schema = {
+        "resumen_ejecutivo": "str",
+        "hallazgos_clave": "list[str]",
+        "analisis_fuentes": "str",
+        "analisis_perfiles": "str",
+        "resultados_entrevistas": "str",
+        "tiempos_y_eficiencia": "str",
+        "riesgos": "list[str]",
+        "recomendaciones": "list[str]",
+        "conclusion_para_gerencia": "str",
+    }
+
+    return {"prompt": prompt, "output_schema": output_schema}
+
+
 # Registro de prompts por tipo — el servicio usa esta tabla para despachar.
 PROMPT_REGISTRY = {
     "descripcion_brecha": prompt_descripcion_brecha,
     "interpretacion_michc": prompt_interpretacion_michc,
     "recomendacion_brecha": prompt_recomendacion_brecha,
+    "informe_gerencial_reclutamiento": prompt_informe_gerencial_reclutamiento,
 }

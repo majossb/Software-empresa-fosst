@@ -356,6 +356,45 @@ class VacanteViewSet(EmpresaScopedViewSet):
         vacante.save()
         return Response(VacanteDetailSerializer(vacante).data)
 
+    @action(
+        detail=True,
+        methods=["get"],
+        url_path="informe-gerencial",
+        permission_classes=[IsAuthenticated, IsRol.de("responsable")],
+    )
+    def informe_gerencial(self, request, pk=None):
+        """Informe gerencial agregado y anonimizado de la vacante, con análisis IA."""
+        from apps.reclutamiento.services.informe_gerencial import generar_informe_gerencial
+
+        vacante = self.get_object()
+        forzar = request.query_params.get("forzar") in ("1", "true", "True")
+        informe = generar_informe_gerencial(vacante.empresa, vacante, forzar=forzar)
+        return Response(informe)
+
+    @action(
+        detail=True,
+        methods=["get"],
+        url_path="informe-gerencial/pdf",
+        permission_classes=[IsAuthenticated, IsRol.de("responsable")],
+    )
+    def informe_gerencial_pdf(self, request, pk=None):
+        """Descarga el informe gerencial en PDF."""
+        from django.http import HttpResponse
+        from apps.reclutamiento.services.informe_gerencial import (
+            generar_informe_gerencial,
+            render_pdf,
+        )
+
+        vacante = self.get_object()
+        forzar = request.query_params.get("forzar") in ("1", "true", "True")
+        informe = generar_informe_gerencial(vacante.empresa, vacante, forzar=forzar)
+        pdf = render_pdf(informe)
+        response = HttpResponse(pdf, content_type="application/pdf")
+        response["Content-Disposition"] = (
+            f'attachment; filename="informe_gerencial_{vacante.codigo}.pdf"'
+        )
+        return response
+
 
 class ProcesoSeleccionViewSet(EmpresaScopedViewSet):
     """

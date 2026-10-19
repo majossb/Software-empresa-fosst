@@ -88,6 +88,71 @@ export interface PerfilCandidato {
   updated_at?: string
 }
 
+export interface InformeGerencial {
+  empresa: { nombre: string; nit: string }
+  vacante: { id: string; codigo: string; titulo: string; estado: string }
+  metricas: {
+    vacante_codigo: string
+    vacante_titulo: string
+    cupos: number
+    estado_vacante: string
+    perfil_cargo: { area?: string; tipo_cargo?: string; nivel_riesgo?: number | null } | null
+    postulaciones: { total: number; por_estado: Record<string, number> }
+    fuentes: Array<{
+      nombre: string
+      candidatos: number
+      preseleccionados: number
+      entrevistados: number
+      contratados: number
+      tasa_conversion: number
+    }>
+    perfiles: {
+      total_candidatos: number
+      nivel_educativo: Record<string, number>
+      experiencia: Record<string, number>
+      ciudades: Record<string, number>
+      competencias: Array<{ nombre: string; total: number }>
+    }
+    entrevistas: {
+      total: number
+      realizadas: number
+      favorables: number
+      con_reservas: number
+      desfavorables: number
+      promedio_calificacion: number | null
+    }
+    evaluaciones: {
+      total: number
+      aprobadas: number
+      no_aprobadas: number
+      promedio_porcentaje: number | null
+      clasificacion: { critico: number; alerta: number; apto: number }
+    }
+    validaciones: Record<string, number>
+    documentos: { requeridos: string[]; completos: number; con_faltantes: number }
+    tiempos: {
+      time_to_fill_dias: number | null
+      postulacion_a_entrevista_dias: number | null
+      postulacion_a_seleccion_dias: number | null
+      duracion_total_dias: number | null
+    }
+  }
+  ia: {
+    resumen_ejecutivo?: string
+    hallazgos_clave?: string[]
+    analisis_fuentes?: string
+    analisis_perfiles?: string
+    resultados_entrevistas?: string
+    tiempos_y_eficiencia?: string
+    riesgos?: string[]
+    recomendaciones?: string[]
+    conclusion_para_gerencia?: string
+    fuente?: string
+  }
+  generado_en: string
+  confidencialidad: string
+}
+
 export interface IndicadorFuente {
   fuente_id: string
   fuente_nombre: string

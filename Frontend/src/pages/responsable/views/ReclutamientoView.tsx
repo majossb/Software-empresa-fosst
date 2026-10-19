@@ -13,13 +13,14 @@ import {
   EstadoPostulacion,
   FuenteReclutamiento,
   IndicadorFuente,
+  InformeGerencial,
 } from '@/types/reclutamiento.types'
 import {
   Users, Briefcase, GitPullRequest, Search, Plus, Filter,
   CheckCircle2, Clock, XCircle, AlertTriangle, Eye, ShieldCheck,
   Award, FileCheck, Phone, Mail, MapPin, Calendar, ExternalLink,
   ChevronRight, ArrowRight, UserCheck, X, RefreshCw,
-  Tag, TrendingUp, Pencil, FileText, Download, History, ListChecks
+  Tag, TrendingUp, Pencil, FileText, Download, History, ListChecks, Sparkles
 } from 'lucide-react'
 
 type TabType = 'banco' | 'vacantes' | 'procesos' | 'fuentes' | 'historico'
@@ -109,6 +110,9 @@ export default function ReclutamientoView() {
   const [showBatchModal, setShowBatchModal] = useState(false)
   const [batchIds, setBatchIds] = useState<string[]>([])
   const [noSeleccionarMotivo, setNoSeleccionarMotivo] = useState('')
+  const [informeVacante, setInformeVacante] = useState('')
+  const [informe, setInforme] = useState<InformeGerencial | null>(null)
+  const [loadingInforme, setLoadingInforme] = useState(false)
 
   // Modales de Acción de Estado
   const [actionModal, setActionModal] = useState<{
@@ -416,6 +420,39 @@ export default function ReclutamientoView() {
       URL.revokeObjectURL(url)
     } catch (err: any) {
       alert(errMsg(err, 'No se pudo exportar el histórico.'))
+    }
+  }
+
+  const handleGenerarInforme = async (forzar = false) => {
+    if (!informeVacante) {
+      alert('Seleccione una vacante para generar el informe.')
+      return
+    }
+    setLoadingInforme(true)
+    try {
+      const data = await reclutamientoService.getInformeGerencial(informeVacante, forzar)
+      setInforme(data)
+    } catch (err: any) {
+      alert(errMsg(err, 'No se pudo generar el informe gerencial.'))
+    } finally {
+      setLoadingInforme(false)
+    }
+  }
+
+  const handleDescargarInformePdf = async () => {
+    if (!informeVacante) return
+    try {
+      const blob = await reclutamientoService.descargarInformeGerencialPdf(informeVacante)
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `informe_gerencial_${informe?.vacante?.codigo || 'vacante'}.pdf`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(url)
+    } catch (err: any) {
+      alert(errMsg(err, 'No se pudo descargar el informe PDF.'))
     }
   }
 
@@ -1438,6 +1475,174 @@ export default function ReclutamientoView() {
                 </Button>
               </div>
             </div>
+          </Card>
+
+          <Card className="p-4 space-y-4">
+            <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-3">
+              <div>
+                <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                  <Sparkles className="w-4 h-4 text-brand-500" /> Informe gerencial con IA
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Resultados agregados y anonimizados por vacante. No incluye datos personales (Ley 1581).
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <select
+                  value={informeVacante}
+                  onChange={(e) => setInformeVacante(e.target.value)}
+                  className="text-xs p-2 border rounded-lg"
+                >
+                  <option value="">Seleccione vacante...</option>
+                  {vacantes.map((v) => (
+                    <option key={v.id} value={v.id}>{v.codigo} — {v.titulo}</option>
+                  ))}
+                </select>
+                <Button
+                  variant="primary"
+                  className="text-xs flex items-center gap-1.5"
+                  disabled={!informeVacante || loadingInforme}
+                  onClick={() => handleGenerarInforme(false)}
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  {loadingInforme ? 'Generando...' : 'Generar informe'}
+                </Button>
+              </div>
+            </div>
+
+            {informe && (
+              <div className="space-y-4 border-t border-slate-100 pt-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="text-xs text-slate-600">
+                    <b>{informe.vacante.codigo}</b> — {informe.vacante.titulo} · {informe.metricas.estado_vacante} · Cupos: {informe.metricas.cupos}
+                    <span className="block text-[10px] text-slate-400">
+                      Generado: {new Date(informe.generado_en).toLocaleString('es-CO')} · Fuente IA: {informe.ia.fuente || 'N/A'}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button variant="secondary" className="text-xs" onClick={() => handleGenerarInforme(true)} disabled={loadingInforme}>
+                      Regenerar
+                    </Button>
+                    <Button variant="secondary" className="text-xs flex items-center gap-1.5" onClick={handleDescargarInformePdf}>
+                      <Download className="w-3.5 h-3.5" /> Descargar PDF
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                  <div className="p-3 rounded-xl bg-slate-50 border border-slate-100 text-center">
+                    <div className="text-lg font-bold text-slate-800">{informe.metricas.postulaciones.total}</div>
+                    <div className="text-[10px] text-slate-500">Postulaciones</div>
+                  </div>
+                  <div className="p-3 rounded-xl bg-slate-50 border border-slate-100 text-center">
+                    <div className="text-lg font-bold text-emerald-700">{informe.metricas.postulaciones.por_estado.seleccionado || 0}</div>
+                    <div className="text-[10px] text-slate-500">Seleccionados</div>
+                  </div>
+                  <div className="p-3 rounded-xl bg-slate-50 border border-slate-100 text-center">
+                    <div className="text-lg font-bold text-slate-800">{informe.metricas.entrevistas.total}</div>
+                    <div className="text-[10px] text-slate-500">Entrevistas</div>
+                  </div>
+                  <div className="p-3 rounded-xl bg-slate-50 border border-slate-100 text-center">
+                    <div className="text-lg font-bold text-slate-800">{informe.metricas.tiempos.time_to_fill_dias ?? 'N/A'}</div>
+                    <div className="text-[10px] text-slate-500">Time-to-fill (días)</div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                  <div className="border border-slate-200 rounded-lg overflow-hidden">
+                    <div className="bg-slate-50 px-3 py-2 text-[11px] font-bold text-slate-600 uppercase">Embudo por estado</div>
+                    <table className="w-full text-xs">
+                      <tbody className="divide-y divide-slate-100">
+                        {Object.entries(informe.metricas.postulaciones.por_estado)
+                          .filter(([, total]) => total > 0)
+                          .map(([estado, total]) => (
+                            <tr key={estado}>
+                              <td className="px-3 py-1.5 text-slate-600 capitalize">{estado.replace('_', ' ')}</td>
+                              <td className="px-3 py-1.5 text-right font-bold text-slate-800">{total}</td>
+                            </tr>
+                          ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <div className="border border-slate-200 rounded-lg overflow-hidden">
+                    <div className="bg-slate-50 px-3 py-2 text-[11px] font-bold text-slate-600 uppercase">Fuentes</div>
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="text-slate-500">
+                          <th className="px-3 py-1.5 text-left font-semibold">Fuente</th>
+                          <th className="px-3 py-1.5 text-right font-semibold">Cand.</th>
+                          <th className="px-3 py-1.5 text-right font-semibold">% Conv.</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {informe.metricas.fuentes.map((f) => (
+                          <tr key={f.nombre}>
+                            <td className="px-3 py-1.5 text-slate-600">{f.nombre}</td>
+                            <td className="px-3 py-1.5 text-right">{f.candidatos}</td>
+                            <td className="px-3 py-1.5 text-right font-semibold text-emerald-700">{f.tasa_conversion}%</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                <div className="p-4 rounded-xl bg-primary-50/40 border border-primary-100 space-y-2 text-xs">
+                  <div className="font-bold text-slate-800 flex items-center gap-2">
+                    <Sparkles className="w-4 h-4 text-brand-500" /> Análisis con IA
+                  </div>
+                  {informe.ia.resumen_ejecutivo && (
+                    <p className="text-slate-700"><b>Resumen ejecutivo:</b> {informe.ia.resumen_ejecutivo}</p>
+                  )}
+                  {informe.ia.analisis_fuentes && (
+                    <p className="text-slate-700"><b>Fuentes:</b> {informe.ia.analisis_fuentes}</p>
+                  )}
+                  {informe.ia.analisis_perfiles && (
+                    <p className="text-slate-700"><b>Perfiles:</b> {informe.ia.analisis_perfiles}</p>
+                  )}
+                  {informe.ia.resultados_entrevistas && (
+                    <p className="text-slate-700"><b>Entrevistas y evaluaciones:</b> {informe.ia.resultados_entrevistas}</p>
+                  )}
+                  {informe.ia.tiempos_y_eficiencia && (
+                    <p className="text-slate-700"><b>Tiempos:</b> {informe.ia.tiempos_y_eficiencia}</p>
+                  )}
+
+                  {!!informe.ia.hallazgos_clave?.length && (
+                    <div>
+                      <b className="text-slate-800">Hallazgos clave</b>
+                      <ul className="list-disc pl-5 text-slate-700">
+                        {informe.ia.hallazgos_clave.map((h, i) => <li key={i}>{h}</li>)}
+                      </ul>
+                    </div>
+                  )}
+
+                  {!!informe.ia.riesgos?.length && (
+                    <div className="text-rose-700">
+                      <b>Riesgos</b>
+                      <ul className="list-disc pl-5">
+                        {informe.ia.riesgos.map((r, i) => <li key={i}>{r}</li>)}
+                      </ul>
+                    </div>
+                  )}
+
+                  {!!informe.ia.recomendaciones?.length && (
+                    <div className="text-emerald-700">
+                      <b>Recomendaciones</b>
+                      <ul className="list-disc pl-5">
+                        {informe.ia.recomendaciones.map((r, i) => <li key={i}>{r}</li>)}
+                      </ul>
+                    </div>
+                  )}
+
+                  {informe.ia.conclusion_para_gerencia && (
+                    <p className="text-slate-700"><b>Conclusión para gerencia:</b> {informe.ia.conclusion_para_gerencia}</p>
+                  )}
+                </div>
+
+                <p className="text-[10px] text-slate-400">{informe.confidencialidad}</p>
+              </div>
+            )}
           </Card>
 
           <Card className="p-0 overflow-hidden border-slate-200">

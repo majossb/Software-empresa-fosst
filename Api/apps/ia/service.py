@@ -191,6 +191,8 @@ class IAInterpretacionService:
             return cls._mock_interpretacion_michc(contexto)
         elif tipo == "recomendacion_brecha":
             return cls._mock_recomendacion_brecha(contexto)
+        elif tipo == "informe_gerencial_reclutamiento":
+            return cls._mock_informe_gerencial(contexto)
         else:
             # Fallback genérico: llenar output_schema con placeholders
             result = {k: f"[Mock] {k}" for k in output_schema}
@@ -295,6 +297,60 @@ class IAInterpretacionService:
                 f"Definir un plan de acción unificado que contemple las perspectivas de "
                 f"todos los módulos involucrados ({modulos}). "
                 f"Establecer hitos de seguimiento quincenales hasta el cierre completo."
+            ),
+            "fuente": "Mock Inteligente",
+        }
+
+    @staticmethod
+    def _mock_informe_gerencial(ctx):
+        post = ctx.get("postulaciones", {}) or {}
+        total = post.get("total", 0)
+        por_estado = post.get("por_estado", {}) or {}
+        seleccionados = por_estado.get("seleccionado", 0)
+        fuentes = ctx.get("fuentes", []) or []
+        top_fuente = max(fuentes, key=lambda f: f.get("candidatos", 0), default=None)
+        ent = ctx.get("entrevistas", {}) or {}
+        eva = ctx.get("evaluaciones", {}) or {}
+        tiempos = ctx.get("tiempos", {}) or {}
+        vacante = ctx.get("vacante_titulo", "la vacante")
+        fuente_txt = top_fuente.get("nombre") if top_fuente else "sin datos de fuente"
+
+        return {
+            "resumen_ejecutivo": (
+                f"Se registraron {total} postulaciones para {vacante}, de las cuales "
+                f"{seleccionados} fueron seleccionadas. La fuente con mayor volumen fue "
+                f"{fuente_txt}. El informe consolida resultados agregados y anonimizados."
+            ),
+            "hallazgos_clave": [
+                f"Total de postulaciones: {total}.",
+                f"Seleccionados: {seleccionados}.",
+                f"Entrevistas registradas: {ent.get('total', 0)}.",
+                f"Evaluaciones registradas: {eva.get('total', 0)} (aprobadas {eva.get('aprobadas', 0)}).",
+            ],
+            "analisis_fuentes": f"La fuente con mayor aporte fue {fuente_txt}.",
+            "analisis_perfiles": (
+                "Los perfiles se presentan de forma agregada y anonimizada, sin datos personales."
+            ),
+            "resultados_entrevistas": (
+                f"Entrevistas: {ent.get('total', 0)}; favorables: {ent.get('favorables', 0)}, "
+                f"desfavorables: {ent.get('desfavorables', 0)}, con reservas: {ent.get('con_reservas', 0)}."
+            ),
+            "tiempos_y_eficiencia": (
+                f"Time-to-fill: {tiempos.get('time_to_fill_dias', 'N/A')} días. "
+                f"Postulación a entrevista: {tiempos.get('postulacion_a_entrevista_dias', 'N/A')} días."
+            ),
+            "riesgos": [
+                "Posible baja participación de candidatos en la convocatoria.",
+                "Dependencia de una sola fuente de reclutamiento.",
+            ],
+            "recomendaciones": [
+                "Fortalecer las fuentes con mayor conversión.",
+                "Reducir los tiempos entre etapas del proceso.",
+                "Documentar la retroalimentación de entrevistas para futuras vacantes.",
+            ],
+            "conclusion_para_gerencia": (
+                "El proceso cuenta con información suficiente para la toma de decisiones; "
+                "se recomienda monitorear la participación y los tiempos de selección."
             ),
             "fuente": "Mock Inteligente",
         }

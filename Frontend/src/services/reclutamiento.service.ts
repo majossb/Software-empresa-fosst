@@ -17,6 +17,7 @@ import {
   VacantePublicaDetail,
   PostulacionCandidatoPublica,
   IndicadorFuente,
+  InformeGerencial,
 } from '@/types/reclutamiento.types'
 
 const CANDIDATE_TOKEN_KEY = 'candidate_portal_token'
@@ -67,6 +68,23 @@ export const reclutamientoService = {
 
   getIndicadoresFuentes: () => {
     return apiClient.get<IndicadorFuente[]>('/reclutamiento/fuentes/indicadores-efectividad/')
+  },
+
+  // ── Informe gerencial con IA (por vacante) ───────────────────
+  getInformeGerencial: (vacanteId: string, forzar = false) => {
+    const qs = forzar ? '?forzar=true' : ''
+    return apiClient.get<InformeGerencial>(`/reclutamiento/vacantes/${vacanteId}/informe-gerencial/${qs}`)
+  },
+
+  descargarInformeGerencialPdf: async (vacanteId: string, forzar = false) => {
+    const token = localStorage.getItem('token')
+    const BASE_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8000/api'
+    const qs = forzar ? '?forzar=true' : ''
+    const res = await fetch(`${BASE_URL}/reclutamiento/vacantes/${vacanteId}/informe-gerencial/pdf/${qs}`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    })
+    if (!res.ok) throw new Error('No se pudo generar el informe gerencial en PDF.')
+    return res.blob()
   },
 
   // ── 3. Vacantes ──────────────────────────────────────────────
