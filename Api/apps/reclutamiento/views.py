@@ -11,6 +11,7 @@ Convenciones respetadas:
 from django.contrib.auth import get_user_model
 from django.db import transaction
 from django.db.models import Q, Count
+from django.utils import timezone
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -939,6 +940,41 @@ class PostulacionViewSet(EmpresaScopedViewSet):
         vacante = postulacion.proceso_seleccion.vacante
         perfil_cargo = vacante.perfil_cargo
 
+        from apps.capacitaciones.models import Trabajador
+
+        texto_contrato = (vacante.tipo_contrato or "").lower()
+        if "indefinid" in texto_contrato:
+            tipo_contrato = Trabajador.TipoContrato.INDEFINIDO
+        elif "fijo" in texto_contrato:
+            tipo_contrato = Trabajador.TipoContrato.FIJO
+        elif "obra" in texto_contrato:
+            tipo_contrato = Trabajador.TipoContrato.OBRA_LABOR
+        elif "prestaci" in texto_contrato:
+            tipo_contrato = Trabajador.TipoContrato.PRESTACION_SERVICIOS
+        elif "aprendiz" in texto_contrato:
+            tipo_contrato = Trabajador.TipoContrato.APRENDIZAJE
+        else:
+            tipo_contrato = Trabajador.TipoContrato.INDEFINIDO
+
+        trabajador, trabajador_creado = Trabajador.objects.get_or_create(
+            empresa=vacante.empresa,
+            documento=candidato.documento,
+            defaults={
+                "sede": vacante.sede,
+                "perfil_cargo": perfil_cargo,
+                "nombre": candidato.nombre_completo,
+                "tipo_vinculacion": Trabajador.TipoVinculacion.DEPENDIENTE,
+                "cargo": perfil_cargo.nombre_cargo,
+                "fecha_ingreso": timezone.now(),
+                "tipo_contrato": tipo_contrato,
+                "estado_contractual": Trabajador.EstadoContractual.PERIODO_PRUEBA,
+                "estado_operativo": Trabajador.EstadoOperativo.PENDIENTE_DOCUMENTAL,
+                "remuneracion_monto": vacante.rango_salarial_min,
+                "remuneracion_tipo": Trabajador.RemuneracionTipo.SALARIO,
+                "activo": True,
+            },
+        )
+
         paquete_vinculacion = {
             "candidato": {
                 "id": str(candidato.id),
@@ -974,11 +1010,19 @@ class PostulacionViewSet(EmpresaScopedViewSet):
             "documentos_soporte": [
                 {
                     "tipo": doc.get_tipo_documento_display(),
-                    "nombre": doc.nombre_descriptivo or getattr(doc.archivo, "nombre_original", "Documento"),
-                    "url": doc.archivo.archivo.url if hasattr(doc.archivo, "archivo") and doc.archivo.archivo else None,
+                    "nombre": doc.nombre_descriptivo or doc.archivo.nombre,
+                    "url": doc.archivo.url or None,
                 }
                 for doc in candidato.documentos.all()
             ],
+            "trabajador": {
+                "id": str(trabajador.id),
+                "creado": trabajador_creado,
+                "nombre": trabajador.nombre,
+                "documento": trabajador.documento,
+                "estado_contractual": trabajador.estado_contractual,
+                "estado_operativo": trabajador.estado_operativo,
+            },
         }
 
         PostulacionEvento.objects.create(
@@ -986,7 +1030,7 @@ class PostulacionViewSet(EmpresaScopedViewSet):
             tipo_evento=PostulacionEvento.TipoEvento.CAMBIO_ESTADO,
             estado_anterior=postulacion.estado,
             estado_nuevo=postulacion.estado,
-            descripcion="Paquete de vinculación laboral y hand-off generado hacia Gestión Humana",
+            descripcion="Paquete de vinculación generado y trabajador registrado en Gestión Humana",
             motivo="Inicio de proceso de contratación e inducción SST",
             usuario=request.user,
         )

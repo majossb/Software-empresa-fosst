@@ -104,6 +104,8 @@ export default function ReclutamientoView() {
   const [selectedProceso, setSelectedProceso] = useState<ProcesoSeleccionDetail | null>(null)
   const [selectedPostulacion, setSelectedPostulacion] = useState<PostulacionDetail | null>(null)
   const [paqueteVinculacion, setPaqueteVinculacion] = useState<any | null>(null)
+  const [confirmVinculacion, setConfirmVinculacion] = useState<PostulacionListItem | null>(null)
+  const [vinculando, setVinculando] = useState(false)
   const [historico, setHistorico] = useState<PostulacionListItem[]>([])
   const [historicoEstado, setHistoricoEstado] = useState('')
   const [historicoVacante, setHistoricoVacante] = useState('')
@@ -480,11 +482,15 @@ export default function ReclutamientoView() {
   }
 
   const handleIniciarVinculacion = async (post: PostulacionListItem) => {
+    setVinculando(true)
     try {
       const paquete = await reclutamientoService.iniciarVinculacion(post.id)
+      setConfirmVinculacion(null)
       setPaqueteVinculacion(paquete)
     } catch (err: any) {
       alert(errMsg(err, 'No se pudo iniciar la vinculación.'))
+    } finally {
+      setVinculando(false)
     }
   }
 
@@ -1193,14 +1199,13 @@ export default function ReclutamientoView() {
                               )}
 
                               {post.estado === 'seleccionado' && (
-                                <Button
-                                  variant="primary"
-                                  className="text-xs py-1 px-2.5 bg-primary-500 hover:bg-primary-600 flex items-center gap-1"
-                                  onClick={() => handleIniciarVinculacion(post)}
+                                <button
+                                  onClick={() => setConfirmVinculacion(post)}
+                                  className="px-2.5 py-1 text-xs rounded-lg bg-primary-600 hover:bg-primary-700 text-white font-semibold flex items-center gap-1 transition-colors"
                                 >
                                   <UserCheck className="w-3.5 h-3.5" />
                                   Iniciar vinculación
-                                </Button>
+                                </button>
                               )}
                             </div>
                           </td>
@@ -2640,6 +2645,47 @@ export default function ReclutamientoView() {
       })()}
 
       {/* ───────────────────────────────────────────────────────── */}
+      {/* MODAL: CONFIRMAR INICIO DE VINCULACIÓN                    */}
+      {/* ───────────────────────────────────────────────────────── */}
+      {confirmVinculacion && (
+        <Modal
+          open={true}
+          onClose={() => { if (!vinculando) setConfirmVinculacion(null) }}
+          title="Confirmar inicio de vinculación"
+          maxWidth="32rem"
+        >
+          <div className="space-y-4">
+            <p className="text-sm text-slate-600">
+              ¿Deseas iniciar la vinculación de <b>{confirmVinculacion.candidato_nombre}</b> al cargo{' '}
+              <b>{confirmVinculacion.vacante_titulo}</b>?
+            </p>
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+              Se creará el trabajador en <b>Gestión Humana</b> con estado documental pendiente y se generará
+              el paquete de hand-off para contratación e inducción SST.
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button
+                variant="secondary"
+                className="text-xs"
+                disabled={vinculando}
+                onClick={() => setConfirmVinculacion(null)}
+              >
+                Cancelar
+              </Button>
+              <Button
+                variant="primary"
+                className="text-xs"
+                disabled={vinculando}
+                onClick={() => handleIniciarVinculacion(confirmVinculacion)}
+              >
+                {vinculando ? 'Procesando...' : 'Confirmar vinculación'}
+              </Button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* ───────────────────────────────────────────────────────── */}
       {/* MODAL: PAQUETE DE VINCULACIÓN (Hand-off)                  */}
       {/* ───────────────────────────────────────────────────────── */}
       {paqueteVinculacion && (
@@ -2693,6 +2739,21 @@ export default function ReclutamientoView() {
                     </li>
                   ))}
                 </ul>
+              </div>
+            )}
+
+            {paqueteVinculacion.trabajador && (
+              <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-emerald-800">
+                <div className="font-bold">
+                  {paqueteVinculacion.trabajador.creado ? 'Trabajador creado' : 'Trabajador actualizado'} en Gestión Humana
+                </div>
+                <div className="text-[11px] mt-0.5">
+                  {paqueteVinculacion.trabajador.nombre} · {paqueteVinculacion.trabajador.documento} ·{' '}
+                  {paqueteVinculacion.trabajador.estado_contractual} / {paqueteVinculacion.trabajador.estado_operativo}
+                </div>
+                <a href="/app/responsable/gestion-humana" className="inline-block mt-2 text-[11px] font-bold underline">
+                  Ir a Gestión Humana
+                </a>
               </div>
             )}
 

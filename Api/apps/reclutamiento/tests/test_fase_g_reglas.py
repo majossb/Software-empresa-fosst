@@ -184,3 +184,28 @@ class FaseGReglasTestCase(APITestCase):
         res = self.client.get("/api/reclutamiento/postulaciones/historico/exportar/?formato=pdf")
         self.assertEqual(res.status_code, status.HTTP_200_OK)
         self.assertTrue(res.content.startswith(b"%PDF-"))
+
+    def test_iniciar_vinculacion_crea_trabajador(self):
+        from apps.capacitaciones.models import Trabajador
+
+        _, candidato, postulacion = _contexto(
+            self.empresa, "VINC", req_ent=False, req_eval=False, req_val=False,
+            estado=Postulacion.Estado.SELECCIONADO,
+        )
+        res = self.client.post(
+            f"/api/reclutamiento/postulaciones/{postulacion.id}/iniciar-vinculacion/"
+        )
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertTrue(res.data["trabajador"]["creado"])
+        trabajador = Trabajador.objects.get(empresa=self.empresa, documento=candidato.documento)
+        self.assertEqual(trabajador.nombre, candidato.nombre_completo)
+        self.assertEqual(trabajador.estado_operativo, Trabajador.EstadoOperativo.PENDIENTE_DOCUMENTAL)
+
+        repetido = self.client.post(
+            f"/api/reclutamiento/postulaciones/{postulacion.id}/iniciar-vinculacion/"
+        )
+        self.assertEqual(repetido.status_code, status.HTTP_200_OK)
+        self.assertFalse(repetido.data["trabajador"]["creado"])
+        self.assertEqual(
+            Trabajador.objects.filter(empresa=self.empresa, documento=candidato.documento).count(), 1
+        )
