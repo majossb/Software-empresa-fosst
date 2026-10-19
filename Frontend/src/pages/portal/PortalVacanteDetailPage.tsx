@@ -41,13 +41,8 @@ export default function PortalVacanteDetailPage() {
   const [extraDocs, setExtraDocs] = useState<Record<string, File | null>>({})
 
   const docsRequeridos = vacante?.documentos_requeridos || []
-  const docsExtra = Array.from(new Set<string>([
-    ...docsRequeridos.filter((t) => t !== 'hoja_de_vida'),
-    'cedula',
-    'certificacion_academica',
-    'certificacion_laboral',
-    'licencia_conduccion',
-  ]))
+  // Solo se muestran los documentos marcados como requeridos (sin extras fijos)
+  const docsExtra = docsRequeridos.filter((t) => t !== 'hoja_de_vida')
 
   const [successData, setSuccessData] = useState<{
     codigo_otp: string
@@ -582,7 +577,8 @@ export default function PortalVacanteDetailPage() {
                     />
                   </div>
 
-                  {/* ── Carga de Hoja de Vida (Adjunto) ─────────────────── */}
+                  {/* ── Carga de Hoja de Vida (solo si es requerida) ─────── */}
+                  {docsRequeridos.includes('hoja_de_vida') && (
                   <div className="space-y-2">
                     <label className="block text-slate-300 font-medium">
                       Adjuntar Hoja de Vida (CV)
@@ -653,23 +649,17 @@ export default function PortalVacanteDetailPage() {
                       </div>
                     )}
                   </div>
+                  )}
 
-                  {/* ── Documentos adicionales ─────────────────────────── */}
+                  {/* ── Documentos requeridos ──────────────────────────── */}
                   {docsExtra.length > 0 && (
                     <div className="space-y-2">
                       <label className="block text-slate-300 font-medium">
-                        {docsRequeridos.length > 0 ? 'Documentos requeridos' : 'Documentos adicionales'}
-                        {docsRequeridos.length === 0 && (
-                          <span className="text-slate-500"> (opcional)</span>
-                        )}
+                        Documentos requeridos
                       </label>
-                      {docsRequeridos.length > 0 ? (
-                        <p className="text-[11px] text-rose-300">
-                          Los documentos marcados con <b>*</b> son obligatorios.
-                        </p>
-                      ) : (
-                        <p className="text-[11px] text-slate-500">Puedes adjuntarlos si lo deseas.</p>
-                      )}
+                      <p className="text-[11px] text-rose-300">
+                        Todos los documentos de esta sección son obligatorios.
+                      </p>
                       <div className="space-y-2">
                         {docsExtra.map((tipo) => {
                           const requerido = docsRequeridos.includes(tipo)
