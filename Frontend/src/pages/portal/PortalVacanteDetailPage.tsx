@@ -194,6 +194,20 @@ export default function PortalVacanteDetailPage() {
       setFeedback({ type: 'error', text: 'Debe autorizar el tratamiento de datos personales (Habeas Data Ley 1581 de 2012).' })
       return
     }
+
+    // Validar documentos requeridos por la empresa
+    const faltantes = docsRequeridos.filter((tipo) => {
+      if (tipo === 'hoja_de_vida') return !selectedFile
+      return !extraDocs[tipo]
+    })
+    if (faltantes.length > 0) {
+      setFeedback({
+        type: 'error',
+        text: `Debes adjuntar los documentos requeridos: ${faltantes.map((t) => DOC_LABELS[t] || t).join(', ')}`,
+      })
+      return
+    }
+
     if (!slugOrId) return
 
     setSubmitting(true)
@@ -571,7 +585,11 @@ export default function PortalVacanteDetailPage() {
                   {/* ── Carga de Hoja de Vida (Adjunto) ─────────────────── */}
                   <div className="space-y-2">
                     <label className="block text-slate-300 font-medium">
-                      Adjuntar Hoja de Vida (CV) <span className="text-slate-500">(PDF, DOC, DOCX - Máx 15MB)</span>
+                      Adjuntar Hoja de Vida (CV)
+                      {docsRequeridos.includes('hoja_de_vida') && (
+                        <span className="text-rose-400 font-bold"> *</span>
+                      )}{' '}
+                      <span className="text-slate-500">(PDF, DOC, DOCX - Máx 15MB)</span>
                     </label>
 
                     <input
@@ -640,12 +658,17 @@ export default function PortalVacanteDetailPage() {
                   {docsExtra.length > 0 && (
                     <div className="space-y-2">
                       <label className="block text-slate-300 font-medium">
-                        Documentos adicionales <span className="text-slate-500">(opcional)</span>
+                        {docsRequeridos.length > 0 ? 'Documentos requeridos' : 'Documentos adicionales'}
+                        {docsRequeridos.length === 0 && (
+                          <span className="text-slate-500"> (opcional)</span>
+                        )}
                       </label>
-                      {docsRequeridos.length > 0 && (
-                        <p className="text-[11px] text-emerald-400">
-                          Requeridos por la empresa: {docsRequeridos.map((t) => DOC_LABELS[t] || t).join(', ')}
+                      {docsRequeridos.length > 0 ? (
+                        <p className="text-[11px] text-rose-300">
+                          Los documentos marcados con <b>*</b> son obligatorios.
                         </p>
+                      ) : (
+                        <p className="text-[11px] text-slate-500">Puedes adjuntarlos si lo deseas.</p>
                       )}
                       <div className="space-y-2">
                         {docsExtra.map((tipo) => {

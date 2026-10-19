@@ -148,6 +148,27 @@ class PostularPublicamenteView(APIView):
             if tipo in tipos_validos:
                 documentos_extra.append((tipo, uploaded))
 
+        # Validar documentos requeridos configurados para el proceso
+        requeridos = []
+        try:
+            if vacante.proceso_seleccion:
+                requeridos = vacante.proceso_seleccion.documentos_requeridos or []
+        except Exception:
+            requeridos = []
+
+        if requeridos:
+            subidos = {tipo for tipo, _ in documentos_extra}
+            if archivo_cv_file or data.get("archivo_cv_id"):
+                subidos.add("hoja_de_vida")
+            faltantes = [tipo for tipo in requeridos if tipo not in subidos]
+            if faltantes:
+                etiquetas = dict(CandidatoDocumento.TipoDocumento.choices)
+                nombres = [str(etiquetas.get(t, t)) for t in faltantes]
+                return Response(
+                    {"detail": f"Faltan documentos requeridos: {', '.join(nombres)}."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
         datos_candidato = {
             "tipo_documento": data["tipo_documento"],
             "documento": data["documento"],
