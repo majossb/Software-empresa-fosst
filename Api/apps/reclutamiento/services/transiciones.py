@@ -63,6 +63,7 @@ ESTADO_TRANSICIONES: Dict[str, List[str]] = {
         Postulacion.Estado.EN_REVISION,
         Postulacion.Estado.NO_SELECCIONADO,
         Postulacion.Estado.RETIRO_CANDIDATURA,
+        Postulacion.Estado.NO_CONTINUO,
     ],
     Postulacion.Estado.EN_REVISION: [
         Postulacion.Estado.PRESELECCIONADO,

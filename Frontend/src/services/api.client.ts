@@ -111,6 +111,9 @@ export class ApiError extends Error {
   /** Mensaje amigable final — prioriza el catálogo interno por código */
   get friendlyMessage(): string {
     if (this.isNetworkError) return ERROR_CODE_MESSAGES['NETWORK_ERROR']
+    if (this.code === 'DOMAIN_ERROR' || this.code === 'VALIDATION_ERROR') {
+      return this.message || ERROR_CODE_MESSAGES[this.code] || ERROR_CODE_MESSAGES['SERVER_ERROR']
+    }
     return ERROR_CODE_MESSAGES[this.code] ?? this.message
   }
 }
@@ -150,12 +153,12 @@ function normalizeApiError(
 
     // Campo `error` directo (respuestas propias del backend)
     if (typeof d.error === 'string') {
-      return { message: d.error, code: (d.code as string) ?? 'SERVER_ERROR' }
+      return { message: d.error, code: (d.code as string) ?? 'DOMAIN_ERROR' }
     }
 
     // Campo `message` o `detail` directos
     if (typeof d.message === 'string') {
-      return { message: d.message, code: (d.code as string) ?? 'SERVER_ERROR' }
+      return { message: d.message, code: (d.code as string) ?? 'DOMAIN_ERROR' }
     }
     if (typeof d.detail === 'string') {
       // Mapear mensajes conocidos del backend al catálogo
@@ -166,7 +169,7 @@ function normalizeApiError(
       if (msgLower.includes('credenciales') || msgLower.includes('incorrect')) {
         return { message: d.detail, code: 'INVALID_CREDENTIALS' }
       }
-      return { message: d.detail, code: 'SERVER_ERROR' }
+      return { message: d.detail, code: 'DOMAIN_ERROR' }
     }
 
     // Errores de campo DRF (objeto de listas)

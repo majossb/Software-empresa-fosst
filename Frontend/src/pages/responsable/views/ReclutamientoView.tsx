@@ -106,6 +106,9 @@ export default function ReclutamientoView() {
   const [paqueteVinculacion, setPaqueteVinculacion] = useState<any | null>(null)
   const [confirmVinculacion, setConfirmVinculacion] = useState<PostulacionListItem | null>(null)
   const [vinculando, setVinculando] = useState(false)
+  const [confirmFaltaDocs, setConfirmFaltaDocs] = useState<PostulacionListItem | null>(null)
+  const [procesandoFaltaDocs, setProcesandoFaltaDocs] = useState(false)
+  const [previewDoc, setPreviewDoc] = useState<{ url: string; nombre: string; tipo: string } | null>(null)
   const [historico, setHistorico] = useState<PostulacionListItem[]>([])
   const [historicoEstado, setHistoricoEstado] = useState('')
   const [historicoVacante, setHistoricoVacante] = useState('')
@@ -359,8 +362,8 @@ export default function ReclutamientoView() {
 
   const handleNoSeleccionar = async () => {
     if (!actionModal.postulacion) return
-    if (!noSeleccionarMotivo.trim()) {
-      alert('Debe indicar el motivo de no selección (RN-R04).')
+    if (noSeleccionarMotivo.trim().length < 5) {
+      alert('El motivo de no selección debe tener al menos 5 caracteres (RN-R04).')
       return
     }
     try {
@@ -395,13 +398,16 @@ export default function ReclutamientoView() {
   }
 
   const handleFaltaDocumentos = async (post: PostulacionListItem) => {
-    if (!confirm(`¿Cerrar el proceso de ${post.candidato_nombre} por falta de documentación y notificarlo?`)) return
+    setProcesandoFaltaDocs(true)
     try {
       await reclutamientoService.cerrarPorFaltaDocumentos(post.id)
+      setConfirmFaltaDocs(null)
       if (selectedProceso) cargarProceso(selectedProceso.id)
       cargarDatos()
     } catch (err: any) {
       alert(errMsg(err, 'No se pudo cerrar por falta de documentos.'))
+    } finally {
+      setProcesandoFaltaDocs(false)
     }
   }
 
@@ -424,6 +430,18 @@ export default function ReclutamientoView() {
       throw new Error('El archivo recibido no es un PDF válido. Intente de nuevo.')
     }
     return new Blob([blob], { type: 'application/pdf' })
+  }
+
+  const handleDescargarDocumento = async (doc: { url: string; nombre: string }) => {
+    try {
+      const res = await fetch(doc.url)
+      if (!res.ok) throw new Error('No se pudo descargar el documento.')
+      const blob = await res.blob()
+      const nombre = doc.nombre.toLowerCase().endsWith('.pdf') ? doc.nombre : `${doc.nombre}.pdf`
+      descargarBlob(new Blob([blob], { type: blob.type || 'application/pdf' }), nombre)
+    } catch {
+      window.open(doc.url, '_blank', 'noopener,noreferrer')
+    }
   }
 
   const handleExportarHistorico = async (formato: 'csv' | 'xlsx' | 'pdf') => {
@@ -1179,7 +1197,7 @@ export default function ReclutamientoView() {
 
                               {post.es_activa && (
                                 <button
-                                  onClick={() => handleFaltaDocumentos(post)}
+                                  onClick={() => setConfirmFaltaDocs(post)}
                                   className="px-2 py-1 text-xs rounded bg-amber-50 text-amber-800 hover:bg-amber-100 font-medium"
                                   title="Cerrar por falta de documentos y notificar"
                                 >
@@ -1927,9 +1945,17 @@ export default function ReclutamientoView() {
                         <b>{d.tipo_documento_display}</b>: {d.nombre_descriptivo || d.archivo_nombre || 'Documento'}
                       </span>
                       {d.archivo_url && (
-                        <a href={d.archivo_url} target="_blank" rel="noopener noreferrer" className="text-primary-500 hover:underline flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => setPreviewDoc({
+                            url: d.archivo_url!,
+                            nombre: d.nombre_descriptivo || d.archivo_nombre || 'Documento',
+                            tipo: d.tipo_documento_display,
+                          })}
+                          className="text-primary-500 hover:underline flex items-center gap-1"
+                        >
                           Ver <ExternalLink className="w-3 h-3" />
-                        </a>
+                        </button>
                       )}
                     </li>
                   ))}
@@ -2564,6 +2590,78 @@ export default function ReclutamientoView() {
       )}
 
       {/* ───────────────────────────────────────────────────────── */}
+      {/* MODAL: CERRAR POR FALTA DE DOCUMENTOS                     */}
+      {/* ───────────────────────────────────────────────────────── */}
+      {confirmFaltaDocs && (
+        <Modal
+          open={true}
+          onClose={() => { if (!procesandoFaltaDocs) setConfirmFaltaDocs(null) }}
+          title="Cerrar por falta de documentos"
+          maxWidth="32rem"
+        >
+          <div className="space-y-4">
+            <p className="text-sm text-slate-600">
+              ¿Cerrar el proceso de <b>{confirmFaltaDocs.candidato_nombre}</b> por falta de
+              documentación y notificarlo?
+            </p>
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+              La postulación quedará en estado <b>No continuó</b> y se enviará la notificación
+              al candidato con el motivo del cierre.
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button
+                variant="secondary"
+                className="text-xs"
+                disabled={procesandoFaltaDocs}
+                onClick={() => setConfirmFaltaDocs(null)}
+              >
+                Cancelar
+              </Button>
+              <Button
+                variant="primary"
+                className="text-xs bg-rose-600 hover:bg-rose-700"
+                disabled={procesandoFaltaDocs}
+                onClick={() => handleFaltaDocumentos(confirmFaltaDocs)}
+              >
+                {procesandoFaltaDocs ? 'Procesando...' : 'Cerrar y notificar'}
+              </Button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* ───────────────────────────────────────────────────────── */}
+      {/* MODAL: VISTA PREVIA DE DOCUMENTO                          */}
+      {/* ───────────────────────────────────────────────────────── */}
+      {previewDoc && (
+        <Modal
+          open={true}
+          onClose={() => setPreviewDoc(null)}
+          title={`Vista previa — ${previewDoc.tipo}`}
+          maxWidth="56rem"
+          footer={
+            <>
+              <Button variant="secondary" className="text-xs" onClick={() => setPreviewDoc(null)}>
+                Cerrar
+              </Button>
+              <Button variant="primary" className="text-xs" onClick={() => handleDescargarDocumento(previewDoc)}>
+                <Download className="w-3.5 h-3.5" /> Descargar
+              </Button>
+            </>
+          }
+        >
+          <div className="space-y-2">
+            <p className="text-xs text-slate-500">{previewDoc.nombre}</p>
+            <iframe
+              src={previewDoc.url}
+              title={previewDoc.nombre}
+              className="w-full h-[65vh] rounded-lg border border-slate-200 bg-slate-50"
+            />
+          </div>
+        </Modal>
+      )}
+
+      {/* ───────────────────────────────────────────────────────── */}
       {/* MODAL: NO SELECCIONAR (RN-R04)                            */}
       {/* ───────────────────────────────────────────────────────── */}
       {actionModal.type === 'no_seleccionar' && actionModal.postulacion && (
@@ -2574,11 +2672,13 @@ export default function ReclutamientoView() {
             </p>
             <textarea
               rows={3}
+              minLength={5}
               className="w-full p-2 border rounded-lg"
-              placeholder="Motivo obligatorio..."
+              placeholder="Motivo obligatorio (mínimo 5 caracteres)..."
               value={noSeleccionarMotivo}
               onChange={(e) => setNoSeleccionarMotivo(e.target.value)}
             />
+            <p className="text-[11px] text-slate-400">Mínimo 5 caracteres. El motivo queda en la trazabilidad.</p>
             <div className="flex justify-end gap-2">
               <Button variant="secondary" className="text-xs" onClick={() => setActionModal({ type: null })}>Cancelar</Button>
               <Button variant="primary" className="text-xs bg-rose-600 hover:bg-rose-700" onClick={handleNoSeleccionar}>No seleccionar</Button>
