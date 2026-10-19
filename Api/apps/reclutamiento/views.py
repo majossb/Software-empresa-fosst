@@ -94,27 +94,26 @@ class FuenteReclutamientoViewSet(EmpresaScopedViewSet):
     serializer_class = FuenteReclutamientoSerializer
     permission_classes = [IsAuthenticated, IsRolParaEscritura.de("responsable", "admin")]
 
+    def list(self, request, *args, **kwargs):
+        # Al abrir el catálogo se garantizan las fuentes semilla de la empresa
+        empresa = getattr(request.user, "empresa", None)
+        if empresa:
+            from apps.reclutamiento.services.fuentes import asegurar_fuentes_sistema
+            asegurar_fuentes_sistema(empresa)
+        return super().list(request, *args, **kwargs)
+
     @action(detail=False, methods=["get"], url_path="indicadores-efectividad")
     def indicadores_efectividad(self, request):
         """
         GET /api/reclutamiento/fuentes/indicadores-efectividad/
-        Devuelve el embudo completo de conversión por fuente de reclutamiento (§2.1).
-        Ejemplo: SPE -> 150 candidatos -> 40 preseleccionados -> 15 entrevistados -> 4 contratados.
+        Devuelve el embudo completo de conversión por fuente de reclutamiento (§2.1),
+        incluyendo el bucket "Sin fuente".
         """
         empresa = request.user.empresa
         if not empresa and request.user.rol != "ADMIN":
             return Response({"error": "Sin empresa asociada."}, status=400)
 
-        fuentes = self.get_queryset()
-        resultado = []
-
-        for fuente in fuentes:
-            postulaciones = Postulacion.objects.filter(
-                empresa=empresa,
-                candidato__fuente_reclutamiento=fuente,
-                deleted_at__isnull=True
-            )
-
+        def metricas(postulaciones):
             candidatos_count = postulaciones.count()
             preseleccionados = postulaciones.filter(
                 estado__in=[
@@ -125,7 +124,6 @@ class FuenteReclutamientoViewSet(EmpresaScopedViewSet):
                     Postulacion.Estado.SELECCIONADO,
                 ]
             ).count()
-
             entrevistados = postulaciones.filter(
                 estado__in=[
                     Postulacion.Estado.EN_ENTREVISTA,
@@ -134,20 +132,39 @@ class FuenteReclutamientoViewSet(EmpresaScopedViewSet):
                     Postulacion.Estado.SELECCIONADO,
                 ]
             ).count()
-
             contratados = postulaciones.filter(estado=Postulacion.Estado.SELECCIONADO).count()
-
-            tasa_conversion = round((contratados / candidatos_count) * 100, 2) if candidatos_count > 0 else 0.0
-
-            resultado.append({
-                "fuente_id": str(fuente.id),
-                "fuente_nombre": fuente.nombre,
+            tasa = round((contratados / candidatos_count) * 100, 2) if candidatos_count > 0 else 0.0
+            return {
                 "candidatos": candidatos_count,
                 "preseleccionados": preseleccionados,
                 "entrevistados": entrevistados,
                 "contratados": contratados,
-                "tasa_conversion_porcentaje": tasa_conversion,
+                "tasa_conversion_porcentaje": tasa,
+            }
+
+        resultado = []
+        for fuente in self.get_queryset():
+            postulaciones = Postulacion.objects.filter(
+                empresa=empresa,
+                candidato__fuente_reclutamiento=fuente,
+                deleted_at__isnull=True,
+            )
+            resultado.append({
+                "fuente_id": str(fuente.id),
+                "fuente_nombre": fuente.nombre,
+                **metricas(postulaciones),
             })
+
+        sin_fuente = Postulacion.objects.filter(
+            empresa=empresa,
+            candidato__fuente_reclutamiento__isnull=True,
+            deleted_at__isnull=True,
+        )
+        resultado.append({
+            "fuente_id": "",
+            "fuente_nombre": "Sin fuente",
+            **metricas(sin_fuente),
+        })
 
         return Response(resultado)
 

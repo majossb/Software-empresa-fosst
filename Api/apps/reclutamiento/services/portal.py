@@ -13,11 +13,13 @@ from apps.reclutamiento.models import (
     Candidato,
     PerfilCandidato,
     CandidatoDocumento,
+    FuenteReclutamiento,
     Vacante,
     ProcesoSeleccion,
     Postulacion,
     TokenAccesoCandidato,
 )
+from apps.reclutamiento.services.fuentes import obtener_o_crear_fuente_portal
 from apps.reclutamiento.services.postulacion import registrar_postulacion, cerrar_postulacion
 from apps.reclutamiento.services.transiciones import MotivoRequeridoError
 
@@ -143,6 +145,14 @@ def postular_publicamente_candidato(
     if not documento or not email:
         raise ValidationError("Documento y correo electrónico son obligatorios.")
 
+    # Fuente del candidato (por defecto "Portal Web")
+    fuente_id = datos_candidato.get("fuente_reclutamiento_id")
+    fuente = None
+    if fuente_id:
+        fuente = FuenteReclutamiento.objects.filter(id=fuente_id, empresa=empresa).first()
+    if fuente is None:
+        fuente = obtener_o_crear_fuente_portal(empresa)
+
     # 1. Buscar o crear Candidato en Banco de Talento por documento o email
     candidato = Candidato.objects.filter(
         empresa=empresa,
@@ -168,6 +178,8 @@ def postular_publicamente_candidato(
         candidato.direccion = datos_candidato.get("direccion", candidato.direccion)
         candidato.autoriza_tratamiento_datos = True
         candidato.fecha_autorizacion_datos = timezone.now()
+        if not candidato.fuente_reclutamiento_id:
+            candidato.fuente_reclutamiento = fuente
         candidato.save()
     else:
         candidato = Candidato.objects.create(
@@ -180,7 +192,7 @@ def postular_publicamente_candidato(
             telefono=datos_candidato.get("telefono", "").strip(),
             ciudad=datos_candidato.get("ciudad", "").strip(),
             direccion=datos_candidato.get("direccion", "").strip(),
-            fuente_reclutamiento_id=datos_candidato.get("fuente_reclutamiento_id"),
+            fuente_reclutamiento=fuente,
             fuente_detalle=datos_candidato.get("fuente_detalle", "Portal Público"),
             autoriza_tratamiento_datos=True,
             fecha_autorizacion_datos=timezone.now(),

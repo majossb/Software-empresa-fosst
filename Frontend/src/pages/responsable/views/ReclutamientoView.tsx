@@ -31,6 +31,7 @@ export default function ReclutamientoView() {
   // ── Tab 1: Banco de Talento ───────────────────────────────────
   const [candidatos, setCandidatos] = useState<CandidatoListItem[]>([])
   const [searchCandidato, setSearchCandidato] = useState('')
+  const [filtroFuente, setFiltroFuente] = useState('')
   const [selectedCandidato, setSelectedCandidato] = useState<CandidatoDetail | null>(null)
   const [showNewCandidatoModal, setShowNewCandidatoModal] = useState(false)
   const [newCandidatoData, setNewCandidatoData] = useState({
@@ -47,6 +48,7 @@ export default function ReclutamientoView() {
     nivel_educativo: 'universitario',
     anios_experiencia: 1,
     autoriza_tratamiento_datos: true,
+    fuente_reclutamiento: '',
   })
   const [editingCandidato, setEditingCandidato] = useState(false)
   const [editCandidatoData, setEditCandidatoData] = useState<any>({})
@@ -532,6 +534,7 @@ export default function ReclutamientoView() {
         email: newCandidatoData.email.trim(),
         telefono: newCandidatoData.telefono.trim(),
         ciudad: newCandidatoData.ciudad.trim(),
+        fuente_reclutamiento: newCandidatoData.fuente_reclutamiento || undefined,
         autoriza_tratamiento_datos: newCandidatoData.autoriza_tratamiento_datos,
         perfil: {
           titulo_profesional: newCandidatoData.titulo_profesional.trim(),
@@ -579,6 +582,7 @@ export default function ReclutamientoView() {
       municipio: c.municipio || '',
       direccion: c.direccion || '',
       estado_perfil: c.estado_perfil || 'activo',
+      fuente_reclutamiento: c.fuente_reclutamiento || '',
       notas_internas: c.notas_internas || '',
       autoriza_tratamiento_datos: c.autoriza_tratamiento_datos,
       perfil: {
@@ -1269,16 +1273,30 @@ export default function ReclutamientoView() {
                   onChange={(e) => setSearchCandidato(e.target.value)}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') {
-                      reclutamientoService.getCandidatos({ search: searchCandidato }).then(setCandidatos)
+                      reclutamientoService.getCandidatos({ search: searchCandidato, fuente_id: filtroFuente || undefined }).then(setCandidatos).catch(() => {})
                     }
                   }}
                   className="w-full text-sm pl-9 pr-3 py-2 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-brand-500"
                 />
               </div>
+              <select
+                value={filtroFuente}
+                onChange={(e) => {
+                  const value = e.target.value
+                  setFiltroFuente(value)
+                  reclutamientoService.getCandidatos({ search: searchCandidato, fuente_id: value || undefined }).then(setCandidatos).catch(() => {})
+                }}
+                className="text-xs p-2 border rounded-lg"
+              >
+                <option value="">Todas las fuentes</option>
+                {fuentes.map((f) => (
+                  <option key={f.id} value={f.id}>{f.nombre}</option>
+                ))}
+              </select>
               <Button
                 variant="secondary"
                 className="text-xs"
-                onClick={() => reclutamientoService.getCandidatos({ search: searchCandidato }).then(setCandidatos)}
+                onClick={() => reclutamientoService.getCandidatos({ search: searchCandidato, fuente_id: filtroFuente || undefined }).then(setCandidatos).catch(() => {})}
               >
                 Buscar
               </Button>
@@ -1294,6 +1312,7 @@ export default function ReclutamientoView() {
                     <th className="p-3.5">Título / Profesión</th>
                     <th className="p-3.5">Experiencia</th>
                     <th className="p-3.5">Ubicación</th>
+                    <th className="p-3.5">Fuente</th>
                     <th className="p-3.5">Habeas Data</th>
                     <th className="p-3.5 text-right">Acción</th>
                   </tr>
@@ -1315,6 +1334,9 @@ export default function ReclutamientoView() {
                       </td>
                       <td className="p-3.5 text-slate-600">
                         {c.ciudad || 'No registrada'}
+                      </td>
+                      <td className="p-3.5 text-slate-600">
+                        {c.fuente_reclutamiento_nombre || '—'}
                       </td>
                       <td className="p-3.5">
                         {c.autoriza_tratamiento_datos ? (
@@ -2463,6 +2485,16 @@ export default function ReclutamientoView() {
                       <option value="descartado">Descartado</option>
                     </select>
                   </div>
+                  <div>
+                    <label className="block text-slate-700 font-medium mb-1">Fuente de reclutamiento</label>
+                    <select className="w-full p-2 border rounded-lg" value={editCandidatoData.fuente_reclutamiento || ''}
+                      onChange={(e) => setEditCandidatoData((p: any) => ({ ...p, fuente_reclutamiento: e.target.value || null }))}>
+                      <option value="">— Sin especificar —</option>
+                      {fuentes.map((f) => (
+                        <option key={f.id} value={f.id}>{f.nombre}</option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">
@@ -2882,6 +2914,20 @@ export default function ReclutamientoView() {
                   onChange={(e) => setNewCandidatoData(p => ({ ...p, anios_experiencia: Number(e.target.value) }))}
                   className="w-full p-2 border rounded-lg"
                 />
+              </div>
+
+              <div>
+                <label className="block text-slate-700 font-medium mb-1">Fuente de reclutamiento:</label>
+                <select
+                  value={newCandidatoData.fuente_reclutamiento}
+                  onChange={(e) => setNewCandidatoData(p => ({ ...p, fuente_reclutamiento: e.target.value }))}
+                  className="w-full p-2 border rounded-lg"
+                >
+                  <option value="">— Sin especificar —</option>
+                  {fuentes.map((f) => (
+                    <option key={f.id} value={f.id}>{f.nombre}</option>
+                  ))}
+                </select>
               </div>
 
               <div className="pt-2 border-t">
