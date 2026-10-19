@@ -870,6 +870,7 @@ class PostulacionViewSet(EmpresaScopedViewSet):
             from reportlab.lib.pagesizes import A4, landscape
             from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
             from reportlab.platypus import SimpleDocTemplate, LongTable, TableStyle, Paragraph, Spacer
+            from xml.sax.saxutils import escape as xml_escape
 
             buf = _io.BytesIO()
             docpdf = SimpleDocTemplate(buf, pagesize=landscape(A4), leftMargin=12, rightMargin=12, topMargin=12, bottomMargin=12)
@@ -877,9 +878,9 @@ class PostulacionViewSet(EmpresaScopedViewSet):
             cell_style = ParagraphStyle("cell", parent=styles["Normal"], fontSize=6.5, leading=8)
             head_style = ParagraphStyle("head", parent=cell_style, textColor=rl_colors.white, fontName="Helvetica-Bold")
 
-            data = [[Paragraph(h, head_style) for h in header]]
+            data = [[Paragraph(xml_escape(str(h)), head_style) for h in header]]
             for r in filas:
-                data.append([Paragraph(str(x), cell_style) for x in r])
+                data.append([Paragraph(xml_escape(str(x)), cell_style) for x in r])
             t = LongTable(data, repeatRows=1)
             t.setStyle(TableStyle([
                 ("BACKGROUND", (0, 0), (-1, 0), rl_colors.HexColor("#002D62")),

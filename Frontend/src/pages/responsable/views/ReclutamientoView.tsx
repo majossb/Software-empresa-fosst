@@ -110,7 +110,6 @@ export default function ReclutamientoView() {
   const [showBatchModal, setShowBatchModal] = useState(false)
   const [batchIds, setBatchIds] = useState<string[]>([])
   const [noSeleccionarMotivo, setNoSeleccionarMotivo] = useState('')
-  const [informeVacante, setInformeVacante] = useState('')
   const [informe, setInforme] = useState<InformeGerencial | null>(null)
   const [loadingInforme, setLoadingInforme] = useState(false)
 
@@ -404,33 +403,61 @@ export default function ReclutamientoView() {
     }
   }
 
+  const descargarBlob = (blob: Blob, filename: string) => {
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename
+    a.rel = 'noopener'
+    a.style.display = 'none'
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    setTimeout(() => URL.revokeObjectURL(url), 2000)
+  }
+
+  const validarPdf = async (blob: Blob) => {
+    const cabecera = await blob.slice(0, 5).text()
+    if (blob.size < 500 || cabecera !== '%PDF-') {
+      throw new Error('El archivo recibido no es un PDF válido. Intente de nuevo.')
+    }
+    return new Blob([blob], { type: 'application/pdf' })
+  }
+
   const handleExportarHistorico = async (formato: 'csv' | 'xlsx' | 'pdf') => {
     try {
       const blob = await reclutamientoService.exportarHistorico(formato, {
         vacante_id: historicoVacante || undefined,
         estado: historicoEstado || undefined,
       })
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = `historico_postulaciones.${formato}`
-      document.body.appendChild(a)
-      a.click()
-      a.remove()
-      URL.revokeObjectURL(url)
+      if (formato === 'pdf') {
+        descargarBlob(await validarPdf(blob), 'historico_postulaciones.pdf')
+      } else if (formato === 'xlsx') {
+        descargarBlob(
+          new Blob([blob], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }),
+          'historico_postulaciones.xlsx',
+        )
+      } else {
+        descargarBlob(new Blob([blob], { type: 'text/csv;charset=utf-8' }), 'historico_postulaciones.csv')
+      }
     } catch (err: any) {
       alert(errMsg(err, 'No se pudo exportar el histórico.'))
     }
   }
 
+  const handleCambiarVacanteHistorico = (value: string) => {
+    setHistoricoVacante(value)
+    setInforme(null)
+  }
+
   const handleGenerarInforme = async (forzar = false) => {
-    if (!informeVacante) {
-      alert('Seleccione una vacante para generar el informe.')
+    if (!historicoVacante) {
+      alert('Seleccione una vacante específica para generar el informe.')
       return
     }
     setLoadingInforme(true)
     try {
-      const data = await reclutamientoService.getInformeGerencial(informeVacante, forzar)
+      const data = await reclutamientoService.getInformeGerencial(historicoVacante, forzar)
       setInforme(data)
     } catch (err: any) {
       alert(errMsg(err, 'No se pudo generar el informe gerencial.'))
@@ -440,17 +467,13 @@ export default function ReclutamientoView() {
   }
 
   const handleDescargarInformePdf = async () => {
-    if (!informeVacante) return
+    if (!informe) return
     try {
-      const blob = await reclutamientoService.descargarInformeGerencialPdf(informeVacante)
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = `informe_gerencial_${informe?.vacante?.codigo || 'vacante'}.pdf`
-      document.body.appendChild(a)
-      a.click()
-      a.remove()
-      URL.revokeObjectURL(url)
+      const blob = await reclutamientoService.descargarInformeGerencialPdf(informe.vacante.id)
+      descargarBlob(
+        await validarPdf(blob),
+        `informe_gerencial_${informe.vacante.codigo || 'vacante'}.pdf`,
+      )
     } catch (err: any) {
       alert(errMsg(err, 'No se pudo descargar el informe PDF.'))
     }
@@ -1444,7 +1467,7 @@ export default function ReclutamientoView() {
               <div className="flex flex-wrap items-center gap-2">
                 <select
                   value={historicoVacante}
-                  onChange={(e) => setHistoricoVacante(e.target.value)}
+                  onChange={(e) => handleCambiarVacanteHistorico(e.target.value)}
                   className="text-xs p-2 border rounded-lg"
                 >
                   <option value="">Todas las vacantes</option>
@@ -1463,7 +1486,7 @@ export default function ReclutamientoView() {
                   ))}
                 </select>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <Button variant="secondary" className="text-xs flex items-center gap-1.5" onClick={() => handleExportarHistorico('csv')}>
                   <Download className="w-3.5 h-3.5" /> CSV
                 </Button>
@@ -1473,41 +1496,33 @@ export default function ReclutamientoView() {
                 <Button variant="secondary" className="text-xs flex items-center gap-1.5" onClick={() => handleExportarHistorico('pdf')}>
                   <Download className="w-3.5 h-3.5" /> PDF
                 </Button>
+                <Button
+                  variant="primary"
+                  className="text-xs flex items-center gap-1.5"
+                  disabled={!historicoVacante || loadingInforme}
+                  title={!historicoVacante ? 'Seleccione una vacante específica para el informe' : undefined}
+                  onClick={() => handleGenerarInforme(false)}
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  {loadingInforme ? 'Generando...' : 'Generar informe IA'}
+                </Button>
               </div>
             </div>
           </Card>
 
           <Card className="p-4 space-y-4">
-            <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-3">
-              <div>
-                <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
-                  <Sparkles className="w-4 h-4 text-brand-500" /> Informe gerencial con IA
-                </h3>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  Resultados agregados y anonimizados por vacante. No incluye datos personales (Ley 1581).
-                </p>
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <select
-                  value={informeVacante}
-                  onChange={(e) => setInformeVacante(e.target.value)}
-                  className="text-xs p-2 border rounded-lg"
-                >
-                  <option value="">Seleccione vacante...</option>
-                  {vacantes.map((v) => (
-                    <option key={v.id} value={v.id}>{v.codigo} — {v.titulo}</option>
-                  ))}
-                </select>
-                <Button
-                  variant="primary"
-                  className="text-xs flex items-center gap-1.5"
-                  disabled={!informeVacante || loadingInforme}
-                  onClick={() => handleGenerarInforme(false)}
-                >
-                  <Sparkles className="w-3.5 h-3.5" />
-                  {loadingInforme ? 'Generando...' : 'Generar informe'}
-                </Button>
-              </div>
+            <div>
+              <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-brand-500" /> Informe gerencial con IA
+              </h3>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Resultados agregados y anonimizados por vacante. No incluye datos personales (Ley 1581).
+                {!informe && (
+                  <span className="block text-slate-400 mt-1">
+                    Seleccione una vacante y pulse “Generar informe IA”.
+                  </span>
+                )}
+              </p>
             </div>
 
             {informe && (

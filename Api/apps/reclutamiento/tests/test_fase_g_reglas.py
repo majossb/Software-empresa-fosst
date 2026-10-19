@@ -166,7 +166,7 @@ class FaseGReglasTestCase(APITestCase):
         self.assertEqual(proceso.vacante.numero_seleccionados, 2)
 
     def test_exportar_historico_formatos(self):
-        _contexto(self.empresa, "EXP", req_ent=False, req_eval=False, req_val=False)
+        _, candidato, _ = _contexto(self.empresa, "EXP", req_ent=False, req_eval=False, req_val=False)
         for fmt, ctype in [
             ("csv", "text/csv"),
             ("xlsx", "application/vnd.openxmlformats"),
@@ -175,3 +175,12 @@ class FaseGReglasTestCase(APITestCase):
             res = self.client.get(f"/api/reclutamiento/postulaciones/historico/exportar/?formato={fmt}")
             self.assertEqual(res.status_code, status.HTTP_200_OK)
             self.assertIn(ctype, res["Content-Type"])
+            if fmt == "pdf":
+                self.assertTrue(res.content.startswith(b"%PDF-"))
+                self.assertTrue(res.content.rstrip().endswith(b"%%EOF"))
+
+        candidato.nombres = "Ana & <María>"
+        candidato.save(update_fields=["nombres"])
+        res = self.client.get("/api/reclutamiento/postulaciones/historico/exportar/?formato=pdf")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertTrue(res.content.startswith(b"%PDF-"))
