@@ -4,7 +4,7 @@ import { reclutamientoService } from '@/services/reclutamiento.service'
 import { VacantePublicaListItem } from '@/types/reclutamiento.types'
 import {
   Briefcase, MapPin, Building2, Search, ArrowRight,
-  Clock, ShieldCheck, CheckCircle2, UserCheck
+  Clock, ShieldCheck, CheckCircle2, UserCheck, Layers
 } from 'lucide-react'
 import { Button, EmptyState } from '@/components/ui'
 
@@ -144,6 +144,17 @@ export default function PortalVacantesPage() {
                       <span className="font-semibold text-emerald-300 font-mono">
                         {v.salario_display}
                       </span>
+                      {v.area && (
+                        <span className="flex items-center gap-1">
+                          <Layers className="w-3.5 h-3.5 text-slate-500" />
+                          {v.area}
+                        </span>
+                      )}
+                      {v.nivel_riesgo != null && (
+                        <span className="px-2 py-0.5 rounded bg-slate-700/70 text-slate-300 text-[10px] font-semibold">
+                          Riesgo {v.nivel_riesgo}
+                        </span>
+                      )}
                     </div>
                   </div>
 

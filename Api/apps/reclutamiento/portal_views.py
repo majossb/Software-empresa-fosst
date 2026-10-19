@@ -50,7 +50,7 @@ class VacantesPublicasListView(APIView):
             estado=Vacante.Estado.ABIERTA,
             publicada_en_portal=True,
             deleted_at__isnull=True,
-        ).select_related("empresa", "sede")
+        ).select_related("empresa", "sede", "perfil_cargo")
 
         search = request.query_params.get("search", "").strip()
         if search:
@@ -84,7 +84,11 @@ class VacantePublicaDetailView(APIView):
             estado=Vacante.Estado.ABIERTA,
             publicada_en_portal=True,
             deleted_at__isnull=True,
-        ).select_related("empresa", "sede", "proceso_seleccion")
+        ).select_related("empresa", "sede", "proceso_seleccion", "perfil_cargo").prefetch_related(
+            "perfil_cargo__funciones",
+            "perfil_cargo__responsabilidades",
+            "perfil_cargo__competencias",
+        )
 
         try:
             import uuid

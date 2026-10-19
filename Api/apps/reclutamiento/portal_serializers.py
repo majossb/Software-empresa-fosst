@@ -17,6 +17,8 @@ class VacantePublicaListSerializer(serializers.ModelSerializer):
     sede_ciudad = serializers.CharField(source="sede.ciudad", read_only=True, default="")
     modalidad_display = serializers.CharField(source="get_modalidad_display", read_only=True)
     salario_display = serializers.SerializerMethodField()
+    area = serializers.SerializerMethodField()
+    nivel_riesgo = serializers.SerializerMethodField()
 
     class Meta:
         model = Vacante
@@ -32,9 +34,17 @@ class VacantePublicaListSerializer(serializers.ModelSerializer):
             "tipo_contrato",
             "numero_cupos",
             "salario_display",
+            "area",
+            "nivel_riesgo",
             "fecha_cierre_estimada",
             "created_at",
         ]
+
+    def get_area(self, obj):
+        return obj.perfil_cargo.area if obj.perfil_cargo_id else ""
+
+    def get_nivel_riesgo(self, obj):
+        return obj.perfil_cargo.nivel_riesgo if obj.perfil_cargo_id else None
 
     def get_salario_display(self, obj):
         if not obj.mostrar_salario_publico:
@@ -54,6 +64,7 @@ class VacantePublicaDetailSerializer(serializers.ModelSerializer):
     requisitos_obligatorios = serializers.SerializerMethodField()
     requisitos_deseables = serializers.SerializerMethodField()
     documentos_requeridos = serializers.SerializerMethodField()
+    perfil_cargo_detalle = serializers.SerializerMethodField()
 
     class Meta:
         model = Vacante
@@ -73,6 +84,7 @@ class VacantePublicaDetailSerializer(serializers.ModelSerializer):
             "requisitos_obligatorios",
             "requisitos_deseables",
             "documentos_requeridos",
+            "perfil_cargo_detalle",
             "fecha_cierre_estimada",
             "created_at",
         ]
@@ -99,6 +111,31 @@ class VacantePublicaDetailSerializer(serializers.ModelSerializer):
         if hasattr(obj, "proceso_seleccion") and obj.proceso_seleccion:
             return obj.proceso_seleccion.documentos_requeridos or []
         return []
+
+    def get_perfil_cargo_detalle(self, obj):
+        pc = getattr(obj, "perfil_cargo", None)
+        if not pc:
+            return None
+        return {
+            "id": str(pc.id),
+            "nombre_cargo": pc.nombre_cargo,
+            "codigo": pc.codigo,
+            "area": pc.area or "",
+            "tipo_cargo": pc.get_tipo_cargo_display() if hasattr(pc, "get_tipo_cargo_display") else pc.tipo_cargo,
+            "nivel_riesgo": pc.nivel_riesgo,
+            "cargo_critico": pc.cargo_critico,
+            "proposito": pc.proposito or "",
+            "educacion": pc.educacion or "",
+            "experiencia": pc.experiencia or "",
+            "formacion": pc.formacion or "",
+            "habilidades": pc.habilidades or "",
+            "funciones": [f.descripcion for f in sorted(pc.funciones.all(), key=lambda x: x.orden)],
+            "responsabilidades": [r.descripcion for r in sorted(pc.responsabilidades.all(), key=lambda x: x.orden)],
+            "competencias": [
+                {"nombre": c.nombre, "tipo": c.tipo or "", "nivel_requerido": c.nivel_requerido}
+                for c in pc.competencias.all()
+            ],
+        }
         return []
 
 

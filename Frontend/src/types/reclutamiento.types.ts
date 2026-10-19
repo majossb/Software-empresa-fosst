@@ -369,6 +369,8 @@ export interface VacantePublicaListItem {
   tipo_contrato: string
   numero_cupos: number
   salario_display: string
+  area?: string
+  nivel_riesgo?: number | null
   fecha_cierre_estimada?: string
   created_at: string
 }
@@ -378,6 +380,23 @@ export interface VacantePublicaDetail extends VacantePublicaListItem {
   requisitos_obligatorios: string[]
   requisitos_deseables: string[]
   documentos_requeridos?: string[]
+  perfil_cargo_detalle?: {
+    id: string
+    nombre_cargo: string
+    codigo: string
+    area: string
+    tipo_cargo: string
+    nivel_riesgo: number | null
+    cargo_critico: boolean
+    proposito: string
+    educacion: string
+    experiencia: string
+    formacion: string
+    habilidades: string
+    funciones: string[]
+    responsabilidades: string[]
+    competencias: Array<{ nombre: string; tipo: string; nivel_requerido: number | null }>
+  } | null
 }
 
 export interface PostulacionCandidatoPublica {

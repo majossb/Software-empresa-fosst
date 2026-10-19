@@ -6,7 +6,7 @@ import { PortalToast, PortalFeedback } from './portal.ui'
 import {
   Briefcase, MapPin, Building2, CheckCircle2,
   ArrowLeft, Send, Check, FileText,
-  UploadCloud, X, Zap, Sparkles
+  UploadCloud, X, Zap, Sparkles, Users, Calendar, Award
 } from 'lucide-react'
 
 const PROFILE_STORAGE_KEY = 'fosst_candidato_profile'
@@ -43,6 +43,7 @@ export default function PortalVacanteDetailPage() {
   const docsRequeridos = vacante?.documentos_requeridos || []
   // Solo se muestran los documentos marcados como requeridos (sin extras fijos)
   const docsExtra = docsRequeridos.filter((t) => t !== 'hoja_de_vida')
+  const perfilCargo = vacante?.perfil_cargo_detalle || null
 
   const [successData, setSuccessData] = useState<{
     codigo_otp: string
@@ -350,12 +351,24 @@ export default function PortalVacanteDetailPage() {
                   <div className="flex items-center gap-2 font-mono font-bold text-emerald-300">
                     <span>{vacante.salario_display}</span>
                   </div>
+                  <div className="flex items-center gap-2">
+                    <Users className="w-4 h-4 text-emerald-400" />
+                    <span>{vacante.numero_cupos} cupo(s) disponible(s)</span>
+                  </div>
+                  {vacante.fecha_cierre_estimada && (
+                    <div className="flex items-center gap-2">
+                      <Calendar className="w-4 h-4 text-emerald-400" />
+                      <span>Cierra: {new Date(vacante.fecha_cierre_estimada).toLocaleDateString('es-CO')}</span>
+                    </div>
+                  )}
                 </div>
 
-                {vacante.descripcion_publica && (
+                {(vacante.descripcion_publica || vacante.perfil_cargo_detalle?.proposito) && (
                   <div className="pt-3 border-t border-slate-700 text-xs text-slate-300 space-y-1.5">
                     <span className="font-bold text-white block">Descripción del Cargo:</span>
-                    <p className="leading-relaxed whitespace-pre-line text-slate-400">{vacante.descripcion_publica}</p>
+                    <p className="leading-relaxed whitespace-pre-line text-slate-400">
+                      {vacante.descripcion_publica || vacante.perfil_cargo_detalle?.proposito}
+                    </p>
                   </div>
                 )}
 
@@ -372,7 +385,112 @@ export default function PortalVacanteDetailPage() {
                     </ul>
                   </div>
                 )}
+
+                {vacante.requisitos_deseables?.length > 0 && (
+                  <div className="pt-3 border-t border-slate-700 text-xs space-y-2">
+                    <span className="font-bold text-white block">Requisitos Deseables:</span>
+                    <ul className="space-y-1.5 text-slate-300">
+                      {vacante.requisitos_deseables.map((req, idx) => (
+                        <li key={idx} className="flex items-start gap-1.5">
+                          <CheckCircle2 className="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" />
+                          <span>{req}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {(vacante.documentos_requeridos?.length ?? 0) > 0 && (
+                  <div className="pt-3 border-t border-slate-700 text-xs space-y-2">
+                    <span className="font-bold text-white block">Documentos requeridos:</span>
+                    <ul className="space-y-1.5 text-slate-300">
+                      {(vacante.documentos_requeridos || []).map((tipo) => (
+                        <li key={tipo} className="flex items-start gap-1.5">
+                          <FileText className="w-3.5 h-3.5 text-emerald-400 shrink-0 mt-0.5" />
+                          <span>{DOC_LABELS[tipo] || tipo}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
               </div>
+
+              {perfilCargo && (
+                <div className="p-6 rounded-2xl bg-slate-800/80 border border-slate-700/80 space-y-4 text-xs">
+                  <h2 className="text-sm font-bold text-white flex items-center gap-2">
+                    <Award className="w-4 h-4 text-emerald-400" />
+                    Perfil del Cargo
+                  </h2>
+
+                  {perfilCargo.proposito && (
+                    <div>
+                      <div className="font-bold text-white mb-1">Propósito</div>
+                      <p className="text-slate-400 leading-relaxed">{perfilCargo.proposito}</p>
+                    </div>
+                  )}
+
+                  {perfilCargo.funciones?.length > 0 && (
+                    <div>
+                      <div className="font-bold text-white mb-1">Funciones esenciales</div>
+                      <ul className="space-y-1.5 text-slate-300">
+                        {perfilCargo.funciones.map((f, i) => (
+                          <li key={i} className="flex items-start gap-1.5">
+                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0 mt-0.5" />
+                            <span>{f}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {perfilCargo.responsabilidades?.length > 0 && (
+                    <div>
+                      <div className="font-bold text-white mb-1">Responsabilidades</div>
+                      <ul className="space-y-1.5 text-slate-300">
+                        {perfilCargo.responsabilidades.map((r, i) => (
+                          <li key={i} className="flex items-start gap-1.5">
+                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0 mt-0.5" />
+                            <span>{r}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {(perfilCargo.educacion || perfilCargo.experiencia || perfilCargo.formacion || perfilCargo.habilidades) && (
+                    <div>
+                      <div className="font-bold text-white mb-1">Requisitos del cargo</div>
+                      <ul className="space-y-1 text-slate-300">
+                        {perfilCargo.educacion && <li><b>Educación:</b> {perfilCargo.educacion}</li>}
+                        {perfilCargo.experiencia && <li><b>Experiencia:</b> {perfilCargo.experiencia}</li>}
+                        {perfilCargo.formacion && <li><b>Formación:</b> {perfilCargo.formacion}</li>}
+                        {perfilCargo.habilidades && <li><b>Habilidades:</b> {perfilCargo.habilidades}</li>}
+                      </ul>
+                    </div>
+                  )}
+
+                  {perfilCargo.competencias?.length > 0 && (
+                    <div>
+                      <div className="font-bold text-white mb-1">Competencias</div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {perfilCargo.competencias.map((c, i) => (
+                          <span key={i} className="px-2 py-0.5 rounded-full bg-slate-900 border border-slate-700 text-slate-300">
+                            {c.nombre}{c.nivel_requerido ? ` · N${c.nivel_requerido}` : ''}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {(perfilCargo.area || perfilCargo.tipo_cargo || perfilCargo.nivel_riesgo != null) && (
+                    <div className="text-[11px] text-slate-500">
+                      {perfilCargo.area && <span>Área: {perfilCargo.area} · </span>}
+                      {perfilCargo.tipo_cargo && <span>Tipo: {perfilCargo.tipo_cargo} · </span>}
+                      {perfilCargo.nivel_riesgo != null && <span>Nivel de riesgo: {perfilCargo.nivel_riesgo}</span>}
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Botón de Postulación Rápida si tiene sesión activa */}
               {hasCandidateSession && (
