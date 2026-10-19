@@ -53,6 +53,7 @@ class VacantePublicaDetailSerializer(serializers.ModelSerializer):
     salario_display = serializers.SerializerMethodField()
     requisitos_obligatorios = serializers.SerializerMethodField()
     requisitos_deseables = serializers.SerializerMethodField()
+    documentos_requeridos = serializers.SerializerMethodField()
 
     class Meta:
         model = Vacante
@@ -71,6 +72,7 @@ class VacantePublicaDetailSerializer(serializers.ModelSerializer):
             "salario_display",
             "requisitos_obligatorios",
             "requisitos_deseables",
+            "documentos_requeridos",
             "fecha_cierre_estimada",
             "created_at",
         ]
@@ -92,6 +94,11 @@ class VacantePublicaDetailSerializer(serializers.ModelSerializer):
     def get_requisitos_deseables(self, obj):
         if hasattr(obj, "proceso_seleccion") and obj.proceso_seleccion:
             return obj.proceso_seleccion.requisitos_deseables or []
+
+    def get_documentos_requeridos(self, obj):
+        if hasattr(obj, "proceso_seleccion") and obj.proceso_seleccion:
+            return obj.proceso_seleccion.documentos_requeridos or []
+        return []
         return []
 
 

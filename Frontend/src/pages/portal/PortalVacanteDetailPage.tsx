@@ -11,6 +11,17 @@ import {
 
 const PROFILE_STORAGE_KEY = 'fosst_candidato_profile'
 
+const DOC_LABELS: Record<string, string> = {
+  hoja_de_vida: 'Hoja de Vida',
+  cedula: 'Cédula',
+  certificacion_academica: 'Certificación académica',
+  certificacion_laboral: 'Certificación laboral',
+  licencia_conduccion: 'Licencia de conducción',
+  licencia_sst: 'Licencia SST',
+  certificacion_alturas: 'Certificación alturas',
+  otro: 'Otro',
+}
+
 export default function PortalVacanteDetailPage() {
   const { slugOrId } = useParams<{ slugOrId: string }>()
   const navigate = useNavigate()
@@ -27,6 +38,16 @@ export default function PortalVacanteDetailPage() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [savedResumeName, setSavedResumeName] = useState<string | null>(null)
   const [feedback, setFeedback] = useState<PortalFeedback>(null)
+  const [extraDocs, setExtraDocs] = useState<Record<string, File | null>>({})
+
+  const docsRequeridos = vacante?.documentos_requeridos || []
+  const docsExtra = Array.from(new Set<string>([
+    ...docsRequeridos.filter((t) => t !== 'hoja_de_vida'),
+    'cedula',
+    'certificacion_academica',
+    'certificacion_laboral',
+    'licencia_conduccion',
+  ]))
 
   const [successData, setSuccessData] = useState<{
     codigo_otp: string
@@ -198,6 +219,10 @@ export default function PortalVacanteDetailPage() {
       if (selectedFile) {
         formData.append('archivo_cv', selectedFile)
       }
+
+      Object.entries(extraDocs).forEach(([tipo, file]) => {
+        if (file) formData.append(`archivo_${tipo}`, file)
+      })
 
       const res = await reclutamientoService.postularPublicamente(slugOrId, formData)
 
@@ -610,6 +635,41 @@ export default function PortalVacanteDetailPage() {
                       </div>
                     )}
                   </div>
+
+                  {/* ── Documentos adicionales ─────────────────────────── */}
+                  {docsExtra.length > 0 && (
+                    <div className="space-y-2">
+                      <label className="block text-slate-300 font-medium">
+                        Documentos adicionales <span className="text-slate-500">(opcional)</span>
+                      </label>
+                      {docsRequeridos.length > 0 && (
+                        <p className="text-[11px] text-emerald-400">
+                          Requeridos por la empresa: {docsRequeridos.map((t) => DOC_LABELS[t] || t).join(', ')}
+                        </p>
+                      )}
+                      <div className="space-y-2">
+                        {docsExtra.map((tipo) => {
+                          const requerido = docsRequeridos.includes(tipo)
+                          const file = extraDocs[tipo]
+                          return (
+                            <div key={tipo} className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-2.5 rounded-xl bg-slate-900 border border-slate-700">
+                              <span className="text-xs text-slate-300">
+                                {DOC_LABELS[tipo] || tipo}
+                                {requerido && <span className="text-emerald-400 font-bold"> *</span>}
+                                {file && <span className="ml-2 text-[10px] text-emerald-400">{file.name}</span>}
+                              </span>
+                              <input
+                                type="file"
+                                accept=".pdf,.jpg,.jpeg,.png,.webp,.doc,.docx"
+                                onChange={(e) => setExtraDocs((prev) => ({ ...prev, [tipo]: e.target.files?.[0] || null }))}
+                                className="text-[11px] text-slate-400 sm:w-56"
+                              />
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )}
 
                   {/* Habeas Data Obligatorio */}
                   <div className="p-4 rounded-xl bg-slate-900/90 border border-slate-700 space-y-2">

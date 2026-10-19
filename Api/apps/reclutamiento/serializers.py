@@ -94,13 +94,13 @@ class CandidatoDocumentoSerializer(serializers.ModelSerializer):
         read_only_fields = ["id", "created_at"]
 
     def get_archivo_url(self, obj):
-        if obj.archivo and hasattr(obj.archivo, "archivo") and obj.archivo.archivo:
-            return obj.archivo.archivo.url
+        if obj.archivo and obj.archivo.url:
+            return obj.archivo.url
         return None
 
     def get_archivo_nombre(self, obj):
-        if obj.archivo and hasattr(obj.archivo, "nombre_original"):
-            return obj.archivo.nombre_original
+        if obj.archivo and obj.archivo.nombre:
+            return obj.archivo.nombre
         return None
 
 
@@ -399,6 +399,9 @@ class VacanteCreateUpdateSerializer(serializers.ModelSerializer):
     requiere_entrevista = serializers.BooleanField(write_only=True, default=True)
     requiere_evaluacion = serializers.BooleanField(write_only=True, default=True)
     requiere_validacion_documental = serializers.BooleanField(write_only=True, default=True)
+    documentos_requeridos = serializers.ListField(
+        child=serializers.CharField(), write_only=True, required=False, default=list
+    )
 
     class Meta:
         model = Vacante
@@ -423,6 +426,7 @@ class VacanteCreateUpdateSerializer(serializers.ModelSerializer):
             "requiere_entrevista",
             "requiere_evaluacion",
             "requiere_validacion_documental",
+            "documentos_requeridos",
         ]
         read_only_fields = ["id"]
 
@@ -432,6 +436,7 @@ class VacanteCreateUpdateSerializer(serializers.ModelSerializer):
         requiere_entrevista = validated_data.pop("requiere_entrevista", True)
         requiere_evaluacion = validated_data.pop("requiere_evaluacion", True)
         requiere_validacion = validated_data.pop("requiere_validacion_documental", True)
+        documentos_requeridos = validated_data.pop("documentos_requeridos", [])
         vacante = Vacante.objects.create(**validated_data)
 
         if auto_crear_proceso:
@@ -450,7 +455,25 @@ class VacanteCreateUpdateSerializer(serializers.ModelSerializer):
                 requiere_evaluacion=requiere_evaluacion,
                 requiere_validacion_documental=requiere_validacion,
                 requisitos_obligatorios=requisitos_obligatorios,
+                documentos_requeridos=documentos_requeridos or [],
             )
+        return vacante
+
+    def update(self, instance, validated_data):
+        documentos = validated_data.pop("documentos_requeridos", None)
+        for extra in (
+            "auto_crear_proceso", "responsable_rh_id",
+            "requiere_entrevista", "requiere_evaluacion",
+            "requiere_validacion_documental",
+        ):
+            validated_data.pop(extra, None)
+
+        vacante = super().update(instance, validated_data)
+
+        proceso = getattr(vacante, "proceso_seleccion", None)
+        if proceso and documentos is not None:
+            proceso.documentos_requeridos = documentos
+            proceso.save(update_fields=["documentos_requeridos", "updated_at"])
         return vacante
 
 
@@ -576,8 +599,8 @@ class EvaluacionSerializer(_ScopedPostulacionMixin, serializers.ModelSerializer)
         return ""
 
     def get_archivo_informe_url(self, obj):
-        if obj.archivo_informe and hasattr(obj.archivo_informe, "archivo") and obj.archivo_informe.archivo:
-            return obj.archivo_informe.archivo.url
+        if obj.archivo_informe and obj.archivo_informe.url:
+            return obj.archivo_informe.url
         return None
 
 
@@ -615,8 +638,8 @@ class ValidacionDocumentalSerializer(_ScopedPostulacionMixin, serializers.ModelS
         return ""
 
     def get_soporte_archivo_url(self, obj):
-        if obj.soporte_archivo and hasattr(obj.soporte_archivo, "archivo") and obj.soporte_archivo.archivo:
-            return obj.soporte_archivo.archivo.url
+        if obj.soporte_archivo and obj.soporte_archivo.url:
+            return obj.soporte_archivo.url
         return None
 
 
@@ -703,6 +726,9 @@ class PostulacionListSerializer(serializers.ModelSerializer):
     evaluacion_porcentaje = serializers.SerializerMethodField()
     evaluacion_clasificacion = serializers.SerializerMethodField()
     requiere_refuerzo = serializers.SerializerMethodField()
+    documentos_count = serializers.SerializerMethodField()
+    documentos_requeridos = serializers.SerializerMethodField()
+    documentos_faltantes = serializers.SerializerMethodField()
 
     class Meta:
         model = Postulacion
@@ -730,6 +756,9 @@ class PostulacionListSerializer(serializers.ModelSerializer):
             "evaluacion_porcentaje",
             "evaluacion_clasificacion",
             "requiere_refuerzo",
+            "documentos_count",
+            "documentos_requeridos",
+            "documentos_faltantes",
             "created_at",
         ]
         read_only_fields = fields
@@ -775,6 +804,20 @@ class PostulacionListSerializer(serializers.ModelSerializer):
     def get_requiere_refuerzo(self, obj):
         return self.get_evaluacion_clasificacion(obj) == "alerta"
 
+    def _documentos_candidato(self, obj):
+        return list(obj.candidato.documentos.all())
+
+    def get_documentos_count(self, obj):
+        return len(self._documentos_candidato(obj))
+
+    def get_documentos_requeridos(self, obj):
+        return obj.proceso_seleccion.documentos_requeridos or []
+
+    def get_documentos_faltantes(self, obj):
+        requeridos = obj.proceso_seleccion.documentos_requeridos or []
+        presentes = {d.tipo_documento for d in self._documentos_candidato(obj)}
+        return [t for t in requeridos if t not in presentes]
+
 
 class PostulacionDetailSerializer(serializers.ModelSerializer):
     """
@@ -782,11 +825,15 @@ class PostulacionDetailSerializer(serializers.ModelSerializer):
     RN-R01: estado es read_only.
     """
     candidato = CandidatoDetailSerializer(read_only=True)
+    candidato_nombre = serializers.CharField(source="candidato.nombre_completo", read_only=True)
     vacante_titulo = serializers.CharField(source="proceso_seleccion.vacante.titulo", read_only=True)
     vacante_codigo = serializers.CharField(source="proceso_seleccion.vacante.codigo", read_only=True)
     estado_display = serializers.CharField(source="get_estado_display", read_only=True)
     autorizado_por_nombre = serializers.SerializerMethodField()
     semaforo_etapas = serializers.SerializerMethodField()
+    documentos_requeridos = serializers.SerializerMethodField()
+    documentos_faltantes = serializers.SerializerMethodField()
+    documentos = serializers.SerializerMethodField()
     eventos = PostulacionEventoSerializer(many=True, read_only=True)
     entrevistas = EntrevistaSerializer(many=True, read_only=True)
     evaluaciones = EvaluacionSerializer(many=True, read_only=True)
@@ -797,6 +844,7 @@ class PostulacionDetailSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "candidato",
+            "candidato_nombre",
             "proceso_seleccion",
             "vacante_codigo",
             "vacante_titulo",
@@ -813,6 +861,9 @@ class PostulacionDetailSerializer(serializers.ModelSerializer):
             "autorizado_por",
             "autorizado_por_nombre",
             "semaforo_etapas",
+            "documentos_requeridos",
+            "documentos_faltantes",
+            "documentos",
             "eventos",
             "entrevistas",
             "evaluaciones",
@@ -829,6 +880,17 @@ class PostulacionDetailSerializer(serializers.ModelSerializer):
 
     def get_semaforo_etapas(self, obj):
         return calcular_semaforo_etapas(obj, obj.proceso_seleccion)
+
+    def get_documentos_requeridos(self, obj):
+        return obj.proceso_seleccion.documentos_requeridos or []
+
+    def get_documentos_faltantes(self, obj):
+        requeridos = obj.proceso_seleccion.documentos_requeridos or []
+        presentes = {d.tipo_documento for d in obj.candidato.documentos.all()}
+        return [t for t in requeridos if t not in presentes]
+
+    def get_documentos(self, obj):
+        return CandidatoDocumentoSerializer(obj.candidato.documentos.all(), many=True).data
 
 
 # -----------------------------------------------------------------------------
@@ -853,6 +915,7 @@ class ProcesoSeleccionDetailSerializer(serializers.ModelSerializer):
             "requiere_entrevista",
             "requiere_evaluacion",
             "requiere_validacion_documental",
+            "documentos_requeridos",
             "requisitos_obligatorios",
             "requisitos_deseables",
             "criterios_evaluacion",
@@ -888,6 +951,7 @@ class ProcesoSeleccionUpdateSerializer(serializers.ModelSerializer):
             "requiere_entrevista",
             "requiere_evaluacion",
             "requiere_validacion_documental",
+            "documentos_requeridos",
             "requisitos_obligatorios",
             "requisitos_deseables",
             "criterios_evaluacion",

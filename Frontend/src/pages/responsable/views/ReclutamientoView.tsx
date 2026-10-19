@@ -24,6 +24,19 @@ import {
 
 type TabType = 'banco' | 'vacantes' | 'procesos' | 'fuentes' | 'historico'
 
+const DOC_TIPOS: Array<[string, string]> = [
+  ['hoja_de_vida', 'Hoja de Vida'],
+  ['cedula', 'Cédula'],
+  ['certificacion_academica', 'Certificación académica'],
+  ['certificacion_laboral', 'Certificación laboral'],
+  ['licencia_conduccion', 'Licencia de conducción'],
+  ['licencia_sst', 'Licencia SST'],
+  ['certificacion_alturas', 'Certificación alturas'],
+  ['otro', 'Otro'],
+]
+
+const docLabel = (tipo: string) => DOC_TIPOS.find(([value]) => value === tipo)?.[1] || tipo
+
 export default function ReclutamientoView() {
   const [activeTab, setActiveTab] = useState<TabType>('procesos')
   const [loading, setLoading] = useState(false)
@@ -82,6 +95,7 @@ export default function ReclutamientoView() {
     requiere_entrevista: true,
     requiere_evaluacion: true,
     requiere_validacion_documental: true,
+    documentos_requeridos: [] as string[],
   })
 
   // ── Tab 3: Procesos de Selección & Pipeline ───────────────────
@@ -442,6 +456,7 @@ export default function ReclutamientoView() {
       requiere_entrevista: true,
       requiere_evaluacion: true,
       requiere_validacion_documental: true,
+      documentos_requeridos: [],
     })
     setShowNewVacanteModal(true)
   }
@@ -463,6 +478,7 @@ export default function ReclutamientoView() {
         requiere_entrevista: v.proceso_seleccion?.requiere_entrevista ?? true,
         requiere_evaluacion: v.proceso_seleccion?.requiere_evaluacion ?? true,
         requiere_validacion_documental: v.proceso_seleccion?.requiere_validacion_documental ?? true,
+        documentos_requeridos: v.proceso_seleccion?.documentos_requeridos || [],
       })
       setEditingVacanteId(id)
       setShowNewVacanteModal(true)
@@ -952,6 +968,21 @@ export default function ReclutamientoView() {
                             <div className="font-bold text-slate-900">{post.candidato_nombre}</div>
                             <div className="text-xs text-slate-500 font-mono">
                               {post.candidato_documento} • {post.candidato_email}
+                            </div>
+                            <div className="mt-1 flex items-center gap-2 text-[10px]">
+                              <button
+                                onClick={() => verDetallePostulacion(post.id)}
+                                className="inline-flex items-center gap-1 text-slate-500 hover:text-primary-600 font-semibold"
+                                title="Ver documentos del aspirante"
+                              >
+                                <FileText className="w-3 h-3" />
+                                {post.documentos_count || 0} docs
+                              </button>
+                              {!!post.documentos_faltantes?.length && (
+                                <span className="text-rose-600 font-bold">
+                                  Faltan {post.documentos_faltantes.length}
+                                </span>
+                              )}
                             </div>
                           </td>
 
@@ -1642,6 +1673,47 @@ export default function ReclutamientoView() {
               ))}
             </div>
 
+            {/* Documentos del aspirante */}
+            <div className="space-y-2">
+              <h4 className="text-sm font-bold text-slate-900 flex items-center gap-1.5">
+                <FileText className="w-4 h-4 text-primary-500" />
+                Documentos del aspirante ({selectedPostulacion.documentos?.length || 0})
+              </h4>
+
+              {!!selectedPostulacion.documentos_requeridos?.length && (
+                <div className={`p-3 rounded-lg border text-xs ${
+                  selectedPostulacion.documentos_faltantes?.length
+                    ? 'bg-rose-50 border-rose-200 text-rose-700'
+                    : 'bg-emerald-50 border-emerald-200 text-emerald-700'
+                }`}>
+                  {selectedPostulacion.documentos_faltantes?.length ? (
+                    <span><b>Faltan documentos:</b> {selectedPostulacion.documentos_faltantes.map(docLabel).join(', ')}</span>
+                  ) : (
+                    <span><b>Documentación requerida completa.</b></span>
+                  )}
+                </div>
+              )}
+
+              {selectedPostulacion.documentos?.length ? (
+                <ul className="space-y-1.5">
+                  {selectedPostulacion.documentos.map((d) => (
+                    <li key={d.id} className="flex items-center justify-between bg-slate-50 rounded-lg px-3 py-2 text-xs">
+                      <span className="text-slate-700">
+                        <b>{d.tipo_documento_display}</b>: {d.nombre_descriptivo || d.archivo_nombre || 'Documento'}
+                      </span>
+                      {d.archivo_url && (
+                        <a href={d.archivo_url} target="_blank" rel="noopener noreferrer" className="text-primary-500 hover:underline flex items-center gap-1">
+                          Ver <ExternalLink className="w-3 h-3" />
+                        </a>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <div className="text-xs text-slate-400">Sin documentos cargados.</div>
+              )}
+            </div>
+
             {/* Línea de Tiempo de Trazabilidad Inmutable (RN-R08) */}
             <div className="space-y-3 pt-4 border-t border-slate-100">
               <h4 className="text-sm font-bold text-slate-900 flex items-center gap-1.5">
@@ -2217,6 +2289,28 @@ export default function ReclutamientoView() {
                     />
                     <span>Validación documental</span>
                   </label>
+                </div>
+              </div>
+
+              <div className="pt-2 border-t">
+                <label className="block text-slate-700 font-medium mb-1.5">Documentos requeridos del aspirante:</label>
+                <div className="flex flex-wrap gap-x-4 gap-y-2">
+                  {DOC_TIPOS.map(([value, label]) => (
+                    <label key={value} className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={newVacanteData.documentos_requeridos.includes(value)}
+                        onChange={(e) => setNewVacanteData((p) => ({
+                          ...p,
+                          documentos_requeridos: e.target.checked
+                            ? [...p.documentos_requeridos, value]
+                            : p.documentos_requeridos.filter((x) => x !== value),
+                        }))}
+                        className="rounded text-primary-500"
+                      />
+                      <span>{label}</span>
+                    </label>
+                  ))}
                 </div>
               </div>
 

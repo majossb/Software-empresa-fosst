@@ -370,6 +370,7 @@ class ProcesoSeleccionViewSet(EmpresaScopedViewSet):
             "vacante", "vacante__perfil_cargo", "vacante__sede", "responsable_rh"
         ).prefetch_related(
             "postulaciones__candidato",
+            "postulaciones__candidato__documentos",
             "postulaciones__proceso_seleccion",
         )
 
@@ -453,6 +454,7 @@ class PostulacionViewSet(EmpresaScopedViewSet):
             "evaluaciones__archivo_informe",
             "validaciones_documentales__verificado_por",
             "validaciones_documentales__soporte_archivo",
+            "candidato__documentos",
         )
 
     def get_serializer_class(self):

@@ -11,7 +11,9 @@ from rest_framework.response import Response
 from rest_framework.permissions import AllowAny
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 
-from apps.reclutamiento.models import Vacante, Postulacion, Candidato, PerfilCandidato
+from apps.reclutamiento.models import (
+    Vacante, Postulacion, Candidato, PerfilCandidato, CandidatoDocumento,
+)
 from apps.reclutamiento.portal_auth import (
     CandidateTokenAuthentication,
     IsAuthenticatedCandidate,
@@ -136,6 +138,16 @@ class PostularPublicamenteView(APIView):
 
         archivo_cv_file = request.FILES.get("archivo_cv")
 
+        # Documentos adicionales: archivo_<tipo> (ej. archivo_cedula, archivo_licencia_conduccion)
+        tipos_validos = dict(CandidatoDocumento.TipoDocumento.choices)
+        documentos_extra = []
+        for field_name, uploaded in request.FILES.items():
+            if field_name == "archivo_cv" or not field_name.startswith("archivo_"):
+                continue
+            tipo = field_name[len("archivo_"):]
+            if tipo in tipos_validos:
+                documentos_extra.append((tipo, uploaded))
+
         datos_candidato = {
             "tipo_documento": data["tipo_documento"],
             "documento": data["documento"],
@@ -149,6 +161,7 @@ class PostularPublicamenteView(APIView):
             "fuente_reclutamiento_id": data.get("fuente_reclutamiento_id"),
             "fuente_detalle": data.get("fuente_detalle", "Portal Web"),
             "archivo_cv_file": archivo_cv_file,
+            "documentos_extra": documentos_extra,
         }
 
         datos_perfil = {

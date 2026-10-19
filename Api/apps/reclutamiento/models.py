@@ -372,6 +372,11 @@ class ProcesoSeleccion(models.Model):
         default=True,
         help_text="RN-R03: Etapa de validación documental y de referencias obligatoria",
     )
+    documentos_requeridos = models.JSONField(
+        default=list,
+        blank=True,
+        help_text="Tipos de documento requeridos para la postulación (CandidatoDocumento.TipoDocumento)",
+    )
     requisitos_obligatorios = models.JSONField(
         default=list,
         blank=True,

@@ -143,6 +143,7 @@ ALLOWED_UPLOAD_MIME_TYPES = env.list(
     "ALLOWED_UPLOAD_MIME_TYPES",
     default=[
         "application/pdf",
+        "application/msword",
         "image/jpeg",
         "image/png",
         "image/webp",

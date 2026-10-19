@@ -116,6 +116,32 @@ def verificar_magic_token_candidato(token_str: str) -> Tuple[Candidato, TokenAcc
     return token_obj.candidato, token_sesion
 
 
+def _guardar_documento_candidato(candidato, archivo_file, tipo_documento, descripcion=None):
+    """Guarda un documento del candidato en el storage central (S3/MinIO) con validación."""
+    from apps.common.storage import validate_and_process_file
+    from apps.evidencias.models import Archivo
+
+    meta = validate_and_process_file(archivo_file, folder="candidatos", filename=archivo_file.name)
+    archivo = Archivo.objects.create(
+        nombre=meta["original_name"],
+        url=meta["url"] if isinstance(meta["url"], str) else "",
+        tipo_mime=meta["mime_type"],
+        tamanio_kb=round(meta["size_bytes"] / 1024),
+        subido_por=candidato.email,
+        sha256_hash=meta["sha256_hash"],
+    )
+    return CandidatoDocumento.objects.create(
+        candidato=candidato,
+        archivo=archivo,
+        tipo_documento=tipo_documento,
+        nombre_descriptivo=descripcion or meta["original_name"],
+    )
+
+
+def _error_documento(exc):
+    return str(getattr(exc, "detail", None) or getattr(exc, "message", None) or exc)
+
+
 @transaction.atomic
 def postular_publicamente_candidato(
     vacante: Vacante,
@@ -206,36 +232,18 @@ def postular_publicamente_candidato(
                 setattr(perfil, attr, val)
         perfil.save()
 
-    # 3. Vincular archivo de Hoja de Vida si fue suministrado (vía ID o archivo subido directamente)
+    # 3. Vincular documentos (CV + documentos adicionales) en el storage central
     archivo_cv_file = datos_candidato.get("archivo_cv_file")
     if archivo_cv_file:
-        import os
-        from django.conf import settings
-        from apps.evidencias.models import Archivo
-        
-        upload_dir = os.path.join(settings.BASE_DIR, "uploads", "cvs")
-        os.makedirs(upload_dir, exist_ok=True)
-        filename = f"{timezone.now().strftime('%Y%m%d%H%M%S')}_{archivo_cv_file.name}"
-        filepath = os.path.join(upload_dir, filename)
-        
-        with open(filepath, "wb+") as dest:
-            for chunk in archivo_cv_file.chunks():
-                dest.write(chunk)
-                
-        final_url = f"/uploads/cvs/{filename}"
-        archivo = Archivo.objects.create(
-            nombre=archivo_cv_file.name,
-            url=final_url,
-            tipo_mime=getattr(archivo_cv_file, "content_type", "application/pdf"),
-            tamanio_kb=round(archivo_cv_file.size / 1024) if hasattr(archivo_cv_file, "size") else 0,
-            subido_por=candidato.email,
-        )
-        CandidatoDocumento.objects.create(
-            candidato=candidato,
-            archivo=archivo,
-            tipo_documento=CandidatoDocumento.TipoDocumento.HOJA_DE_VIDA,
-            nombre_descriptivo=f"Hoja de Vida — {archivo_cv_file.name}",
-        )
+        try:
+            _guardar_documento_candidato(
+                candidato,
+                archivo_cv_file,
+                CandidatoDocumento.TipoDocumento.HOJA_DE_VIDA,
+                f"Hoja de Vida — {archivo_cv_file.name}",
+            )
+        except Exception as exc:
+            raise ValidationError(_error_documento(exc))
     elif archivo_cv_id:
         from apps.evidencias.models import Archivo
         archivo = Archivo.objects.filter(id=archivo_cv_id).first()
@@ -246,6 +254,13 @@ def postular_publicamente_candidato(
                 tipo_documento=CandidatoDocumento.TipoDocumento.HOJA_DE_VIDA,
                 nombre_descriptivo="Hoja de Vida — Portal Público",
             )
+
+    # Documentos adicionales (cédula, certificaciones, licencias, etc.)
+    for tipo, archivo_extra in datos_candidato.get("documentos_extra") or []:
+        try:
+            _guardar_documento_candidato(candidato, archivo_extra, tipo)
+        except Exception as exc:
+            raise ValidationError(_error_documento(exc))
 
     # 4. Obtener o crear Proceso de Selección para la vacante
     proceso, _ = ProcesoSeleccion.objects.get_or_create(

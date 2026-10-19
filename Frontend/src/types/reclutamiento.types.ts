@@ -204,6 +204,7 @@ export interface VacanteDetail extends VacanteListItem {
     requiere_entrevista: boolean
     requiere_evaluacion: boolean
     requiere_validacion_documental: boolean
+    documentos_requeridos?: string[]
     total_postulaciones: number
   }
 }
@@ -313,11 +314,15 @@ export interface PostulacionListItem {
   evaluacion_porcentaje?: number | null
   evaluacion_clasificacion?: 'critico' | 'alerta' | 'apto' | null
   requiere_refuerzo?: boolean
+  documentos_count?: number
+  documentos_requeridos?: string[]
+  documentos_faltantes?: string[]
   created_at: string
 }
 
 export interface PostulacionDetail extends PostulacionListItem {
   candidato_detalle?: CandidatoDetail
+  documentos?: CandidatoDocumento[]
   calificacion_requisitos?: Record<string, boolean>
   motivo_cierre?: string
   justificacion_excepcion?: string
@@ -339,6 +344,7 @@ export interface ProcesoSeleccionDetail {
   requiere_entrevista: boolean
   requiere_evaluacion: boolean
   requiere_validacion_documental: boolean
+  documentos_requeridos?: string[]
   requisitos_obligatorios: string[]
   requisitos_deseables: string[]
   criterios_evaluacion: Record<string, any>
@@ -371,6 +377,7 @@ export interface VacantePublicaDetail extends VacantePublicaListItem {
   descripcion_publica: string
   requisitos_obligatorios: string[]
   requisitos_deseables: string[]
+  documentos_requeridos?: string[]
 }
 
 export interface PostulacionCandidatoPublica {
