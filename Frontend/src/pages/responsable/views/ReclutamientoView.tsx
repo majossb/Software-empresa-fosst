@@ -19,10 +19,10 @@ import {
   CheckCircle2, Clock, XCircle, AlertTriangle, Eye, ShieldCheck,
   Award, FileCheck, Phone, Mail, MapPin, Calendar, ExternalLink,
   ChevronRight, ArrowRight, UserCheck, X, RefreshCw,
-  Tag, TrendingUp, Pencil, FileText
+  Tag, TrendingUp, Pencil, FileText, Download, History, ListChecks
 } from 'lucide-react'
 
-type TabType = 'banco' | 'vacantes' | 'procesos' | 'fuentes'
+type TabType = 'banco' | 'vacantes' | 'procesos' | 'fuentes' | 'historico'
 
 export default function ReclutamientoView() {
   const [activeTab, setActiveTab] = useState<TabType>('procesos')
@@ -87,10 +87,16 @@ export default function ReclutamientoView() {
   const [selectedProceso, setSelectedProceso] = useState<ProcesoSeleccionDetail | null>(null)
   const [selectedPostulacion, setSelectedPostulacion] = useState<PostulacionDetail | null>(null)
   const [paqueteVinculacion, setPaqueteVinculacion] = useState<any | null>(null)
+  const [historico, setHistorico] = useState<PostulacionListItem[]>([])
+  const [historicoEstado, setHistoricoEstado] = useState('')
+  const [historicoVacante, setHistoricoVacante] = useState('')
+  const [showBatchModal, setShowBatchModal] = useState(false)
+  const [batchIds, setBatchIds] = useState<string[]>([])
+  const [noSeleccionarMotivo, setNoSeleccionarMotivo] = useState('')
 
   // Modales de Acción de Estado
   const [actionModal, setActionModal] = useState<{
-    type: 'preseleccionar' | 'entrevista' | 'evaluacion' | 'validacion' | 'seleccionar' | 'cerrar' | 'reabrir' | 'postular' | null
+    type: 'preseleccionar' | 'entrevista' | 'evaluacion' | 'validacion' | 'seleccionar' | 'no_seleccionar' | 'cerrar' | 'reabrir' | 'postular' | null
     postulacion?: PostulacionListItem
   }>({ type: null })
 
@@ -161,6 +167,9 @@ export default function ReclutamientoView() {
       ])
       setFuentes(Array.isArray(fuentesRes) ? fuentesRes : [])
       setIndicadores(Array.isArray(indRes) ? indRes : [])
+
+      const posts = await reclutamientoService.getPostulaciones().catch(() => [])
+      setHistorico(Array.isArray(posts) ? posts : [])
 
       if (Array.isArray(vacRes) && vacRes.length > 0 && !selectedVacanteId) {
         const primeraConProceso = vacRes.find(v => v.proceso_seleccion_id) || vacRes[0]
@@ -324,6 +333,73 @@ export default function ReclutamientoView() {
       if (selectedPostulacion) verDetallePostulacion(selectedPostulacion.id)
     } catch (err: any) {
       alert(errMsg(err, 'Error al reabrir postulación'))
+    }
+  }
+
+  const handleNoSeleccionar = async () => {
+    if (!actionModal.postulacion) return
+    if (!noSeleccionarMotivo.trim()) {
+      alert('Debe indicar el motivo de no selección (RN-R04).')
+      return
+    }
+    try {
+      await reclutamientoService.cerrarPostulacion(actionModal.postulacion.id, {
+        nuevo_estado: 'no_seleccionado',
+        motivo: noSeleccionarMotivo.trim(),
+      })
+      setActionModal({ type: null })
+      setNoSeleccionarMotivo('')
+      if (selectedProceso) cargarProceso(selectedProceso.id)
+      cargarDatos()
+    } catch (err: any) {
+      alert(errMsg(err, 'No se pudo registrar la no selección.'))
+    }
+  }
+
+  const handleSeleccionMasiva = async () => {
+    if (batchIds.length === 0) {
+      alert('Seleccione al menos un candidato.')
+      return
+    }
+    try {
+      const res = await reclutamientoService.seleccionarMasivo(batchIds)
+      setShowBatchModal(false)
+      setBatchIds([])
+      if (selectedProceso) cargarProceso(selectedProceso.id)
+      cargarDatos()
+      alert(`Seleccionados: ${res.seleccionados}. Cupos disponibles: ${res.cupos_disponibles}.`)
+    } catch (err: any) {
+      alert(errMsg(err, 'No se pudo realizar la selección múltiple.'))
+    }
+  }
+
+  const handleFaltaDocumentos = async (post: PostulacionListItem) => {
+    if (!confirm(`¿Cerrar el proceso de ${post.candidato_nombre} por falta de documentación y notificarlo?`)) return
+    try {
+      await reclutamientoService.cerrarPorFaltaDocumentos(post.id)
+      if (selectedProceso) cargarProceso(selectedProceso.id)
+      cargarDatos()
+    } catch (err: any) {
+      alert(errMsg(err, 'No se pudo cerrar por falta de documentos.'))
+    }
+  }
+
+  const handleExportarHistorico = async (formato: 'csv' | 'xlsx' | 'pdf') => {
+    try {
+      const blob = await reclutamientoService.exportarHistorico(formato, {
+        vacante_id: historicoVacante || undefined,
+        estado: historicoEstado || undefined,
+      })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `historico_postulaciones.${formato}`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(url)
+    } catch (err: any) {
+      alert(errMsg(err, 'No se pudo exportar el histórico.'))
     }
   }
 
@@ -762,6 +838,18 @@ export default function ReclutamientoView() {
             <Tag className="w-4 h-4" />
             Fuentes ({fuentes.length})
           </button>
+
+          <button
+            onClick={() => setActiveTab('historico')}
+            className={`pb-3 text-sm font-semibold flex items-center gap-2 border-b-2 transition ${
+              activeTab === 'historico'
+                ? 'border-brand-500 text-primary-500 font-bold'
+                : 'border-transparent text-slate-500 hover:text-slate-800'
+            }`}
+          >
+            <History className="w-4 h-4" />
+            Histórico ({historico.length})
+          </button>
         </div>
       </div>
 
@@ -796,6 +884,14 @@ export default function ReclutamientoView() {
 
               {selectedProceso && (
                 <div className="flex items-center gap-2">
+                  <Button
+                    variant="secondary"
+                    className="text-xs flex items-center gap-1.5"
+                    onClick={() => { setBatchIds([]); setShowBatchModal(true) }}
+                  >
+                    <ListChecks className="w-4 h-4" />
+                    Selección múltiple
+                  </Button>
                   <Button
                     variant="primary"
                     className="text-xs flex items-center gap-1.5"
@@ -840,7 +936,8 @@ export default function ReclutamientoView() {
                         <th className="p-3.5">Candidato</th>
                         <th className="p-3.5">Estado</th>
                         <th className="p-3.5 text-center">Semáforo de Etapas (RN-R03)</th>
-                        <th className="p-3.5 text-center">Puntaje</th>
+                        <th className="p-3.5 text-center">Entrevista</th>
+                        <th className="p-3.5 text-center">Evaluación</th>
                         <th className="p-3.5 text-right">Acciones de Selección</th>
                       </tr>
                     </thead>
@@ -872,10 +969,33 @@ export default function ReclutamientoView() {
                             </div>
                           </td>
 
-                          <td className="p-3.5 text-center font-bold text-slate-700">
-                            {post.puntuacion_general !== null && post.puntuacion_general !== undefined
-                              ? `${post.puntuacion_general} / 100`
-                              : '—'}
+                          <td className="p-3.5 text-center">
+                            <div className="font-bold text-slate-700">
+                              {post.entrevista_calificacion !== null && post.entrevista_calificacion !== undefined
+                                ? `${post.entrevista_calificacion} / 100`
+                                : '—'}
+                            </div>
+                            {post.entrevista_concepto && (
+                              <div className={`text-[10px] font-semibold ${post.entrevista_concepto === 'desfavorable' ? 'text-rose-700' : 'text-amber-800'}`}>
+                                {post.entrevista_concepto.replace('_', ' ')}
+                              </div>
+                            )}
+                          </td>
+                          <td className="p-3.5 text-center">
+                            <div className="font-bold text-slate-700">
+                              {post.evaluacion_porcentaje !== null && post.evaluacion_porcentaje !== undefined
+                                ? `${post.evaluacion_porcentaje}%`
+                                : '—'}
+                            </div>
+                            {post.evaluacion_clasificacion && (
+                              <div className={`text-[10px] font-semibold ${
+                                post.evaluacion_clasificacion === 'critico' ? 'text-rose-700'
+                                  : post.evaluacion_clasificacion === 'alerta' ? 'text-amber-700' : 'text-emerald-700'
+                              }`}>
+                                {post.evaluacion_clasificacion === 'critico' ? 'Crítico'
+                                  : post.evaluacion_clasificacion === 'alerta' ? 'Alerta (refuerzo)' : 'Apto'}
+                              </div>
+                            )}
                           </td>
 
                           <td className="p-3.5 text-right">
@@ -943,6 +1063,26 @@ export default function ReclutamientoView() {
                                   title="Cerrar Postulación (No seleccionado / Abandono)"
                                 >
                                   <XCircle className="w-4 h-4" />
+                                </button>
+                              )}
+
+                              {post.es_activa && (
+                                <button
+                                  onClick={() => { setNoSeleccionarMotivo(''); setActionModal({ type: 'no_seleccionar', postulacion: post }) }}
+                                  className="px-2 py-1 text-xs rounded bg-rose-50 text-rose-700 hover:bg-rose-100 font-medium"
+                                  title="No seleccionar (motivo obligatorio)"
+                                >
+                                  No seleccionar
+                                </button>
+                              )}
+
+                              {post.es_activa && (
+                                <button
+                                  onClick={() => handleFaltaDocumentos(post)}
+                                  className="px-2 py-1 text-xs rounded bg-amber-50 text-amber-800 hover:bg-amber-100 font-medium"
+                                  title="Cerrar por falta de documentos y notificar"
+                                >
+                                  Falta docs
                                 </button>
                               )}
 
@@ -1205,6 +1345,119 @@ export default function ReclutamientoView() {
       )}
 
       {/* ───────────────────────────────────────────────────────── */}
+      {/* TAB 5: HISTÓRICO DE POSTULACIONES                          */}
+      {/* ───────────────────────────────────────────────────────── */}
+      {activeTab === 'historico' && (
+        <div className="space-y-4">
+          <Card className="p-4">
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <select
+                  value={historicoVacante}
+                  onChange={(e) => setHistoricoVacante(e.target.value)}
+                  className="text-xs p-2 border rounded-lg"
+                >
+                  <option value="">Todas las vacantes</option>
+                  {vacantes.map((v) => (
+                    <option key={v.id} value={v.id}>{v.codigo} — {v.titulo}</option>
+                  ))}
+                </select>
+                <select
+                  value={historicoEstado}
+                  onChange={(e) => setHistoricoEstado(e.target.value)}
+                  className="text-xs p-2 border rounded-lg"
+                >
+                  <option value="">Todos los estados</option>
+                  {['postulado', 'en_revision', 'preseleccionado', 'en_entrevista', 'en_evaluacion', 'en_validacion', 'seleccionado', 'no_seleccionado', 'retiro_candidatura', 'no_continuo'].map((e) => (
+                    <option key={e} value={e}>{e.replace('_', ' ')}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button variant="secondary" className="text-xs flex items-center gap-1.5" onClick={() => handleExportarHistorico('csv')}>
+                  <Download className="w-3.5 h-3.5" /> CSV
+                </Button>
+                <Button variant="secondary" className="text-xs flex items-center gap-1.5" onClick={() => handleExportarHistorico('xlsx')}>
+                  <Download className="w-3.5 h-3.5" /> Excel
+                </Button>
+                <Button variant="secondary" className="text-xs flex items-center gap-1.5" onClick={() => handleExportarHistorico('pdf')}>
+                  <Download className="w-3.5 h-3.5" /> PDF
+                </Button>
+              </div>
+            </div>
+          </Card>
+
+          <Card className="p-0 overflow-hidden border-slate-200">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse text-xs">
+                <thead>
+                  <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase text-[11px] font-semibold">
+                    <th className="p-3.5">Vacante</th>
+                    <th className="p-3.5">Candidato</th>
+                    <th className="p-3.5">Estado</th>
+                    <th className="p-3.5 text-center">Entrevista</th>
+                    <th className="p-3.5 text-center">Evaluación</th>
+                    <th className="p-3.5">Motivo cierre</th>
+                    <th className="p-3.5">Fecha</th>
+                    <th className="p-3.5 text-right">Ver</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {historico
+                    .filter(h => {
+                      if (historicoEstado && h.estado !== historicoEstado) return false
+                      if (historicoVacante) {
+                        const vac = vacantes.find(v => v.id === historicoVacante)
+                        if (vac?.proceso_seleccion_id && h.proceso_seleccion !== vac.proceso_seleccion_id) return false
+                      }
+                      return true
+                    })
+                    .map((h) => (
+                      <tr key={h.id} className="hover:bg-slate-50 transition">
+                        <td className="p-3.5">
+                          <div className="font-mono text-slate-500">{h.vacante_codigo}</div>
+                          <div className="font-medium text-slate-800">{h.vacante_titulo}</div>
+                        </td>
+                        <td className="p-3.5">
+                          <div className="font-bold text-slate-900">{h.candidato_nombre}</div>
+                          <div className="text-slate-500 font-mono">{h.candidato_documento}</div>
+                        </td>
+                        <td className="p-3.5">{renderEstadoBadge(h.estado)}</td>
+                        <td className="p-3.5 text-center">
+                          <div className="font-bold text-slate-700">{h.entrevista_calificacion != null ? `${h.entrevista_calificacion}/100` : '—'}</div>
+                          {h.entrevista_concepto && <div className="text-[10px] text-amber-800 capitalize">{h.entrevista_concepto.replace('_', ' ')}</div>}
+                        </td>
+                        <td className="p-3.5 text-center">
+                          <div className="font-bold text-slate-700">{h.evaluacion_porcentaje != null ? `${h.evaluacion_porcentaje}%` : '—'}</div>
+                          {h.evaluacion_clasificacion && (
+                            <div className={`text-[10px] font-semibold ${
+                              h.evaluacion_clasificacion === 'critico' ? 'text-rose-700'
+                                : h.evaluacion_clasificacion === 'alerta' ? 'text-amber-700' : 'text-emerald-700'
+                            }`}>
+                              {h.evaluacion_clasificacion}
+                            </div>
+                          )}
+                        </td>
+                        <td className="p-3.5 text-slate-600 max-w-[16rem] truncate" title={h.motivo_cierre || ''}>{h.motivo_cierre || '—'}</td>
+                        <td className="p-3.5 text-slate-600">{new Date(h.fecha_postulacion).toLocaleDateString('es-CO')}</td>
+                        <td className="p-3.5 text-right">
+                          <button onClick={() => verDetallePostulacion(h.id)} className="p-1.5 rounded-lg hover:bg-slate-200 text-slate-600" title="Ver historial y observaciones">
+                            <Eye className="w-4 h-4" />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  {historico.length === 0 && (
+                    <tr><td colSpan={8} className="p-8 text-center text-slate-400">Sin postulaciones registradas.</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+        </div>
+      )}
+
+      {/* ───────────────────────────────────────────────────────── */}
       {/* TAB 4: FUENTES DE RECLUTAMIENTO                           */}
       {/* ───────────────────────────────────────────────────────── */}
       {activeTab === 'fuentes' && (
@@ -1336,6 +1589,16 @@ export default function ReclutamientoView() {
                   <div className="text-slate-500">
                     Puntaje: {ev.puntaje_obtenido} / {ev.puntaje_maximo} • Aprobación mín: {ev.porcentaje_aprobacion}%
                   </div>
+                  {ev.clasificacion && (
+                    <div className={`font-semibold ${
+                      ev.clasificacion === 'critico' ? 'text-rose-700'
+                        : ev.clasificacion === 'alerta' ? 'text-amber-700' : 'text-emerald-700'
+                    }`}>
+                      {ev.clasificacion_display || ev.clasificacion}
+                      {ev.requiere_refuerzo ? ' — Requiere refuerzo de competencia' : ''}
+                    </div>
+                  )}
+                  {ev.concepto && <div className="text-slate-600 italic">"{ev.concepto}"</div>}
                 </div>
               ))}
             </div>
@@ -1958,6 +2221,87 @@ export default function ReclutamientoView() {
           </Card>
         </div>
       )}
+
+      {/* ───────────────────────────────────────────────────────── */}
+      {/* MODAL: NO SELECCIONAR (RN-R04)                            */}
+      {/* ───────────────────────────────────────────────────────── */}
+      {actionModal.type === 'no_seleccionar' && actionModal.postulacion && (
+        <Modal open={true} onClose={() => setActionModal({ type: null })} title="No seleccionar candidato (RN-R04)" maxWidth="28rem">
+          <div className="space-y-4 text-xs">
+            <p className="text-slate-600">
+              Registra el motivo por el cual <b>{actionModal.postulacion.candidato_nombre}</b> no continúa en el proceso.
+            </p>
+            <textarea
+              rows={3}
+              className="w-full p-2 border rounded-lg"
+              placeholder="Motivo obligatorio..."
+              value={noSeleccionarMotivo}
+              onChange={(e) => setNoSeleccionarMotivo(e.target.value)}
+            />
+            <div className="flex justify-end gap-2">
+              <Button variant="secondary" className="text-xs" onClick={() => setActionModal({ type: null })}>Cancelar</Button>
+              <Button variant="primary" className="text-xs bg-rose-600 hover:bg-rose-700" onClick={handleNoSeleccionar}>No seleccionar</Button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* ───────────────────────────────────────────────────────── */}
+      {/* MODAL: SELECCIÓN MÚLTIPLE POR CUPOS                       */}
+      {/* ───────────────────────────────────────────────────────── */}
+      {showBatchModal && selectedProceso && (() => {
+        const disponibles = selectedProceso.vacante_detalle?.cupos_disponibles ?? 0
+        const elegibles = selectedProceso.postulaciones.filter(p =>
+          ['preseleccionado', 'en_entrevista', 'en_evaluacion', 'en_validacion'].includes(p.estado)
+        )
+        return (
+          <Modal open={true} onClose={() => setShowBatchModal(false)} title="Selección múltiple de candidatos" maxWidth="40rem">
+            <div className="space-y-4 text-xs">
+              <p className="text-slate-600">
+                Cupos disponibles en la vacante: <b>{disponibles}</b>. Seleccione hasta esa cantidad.
+              </p>
+              <div className="max-h-80 overflow-y-auto border rounded-lg divide-y divide-slate-100">
+                {elegibles.map((p) => {
+                  const checked = batchIds.includes(p.id)
+                  const disabled = !checked && batchIds.length >= disponibles
+                  return (
+                    <label key={p.id} className={`flex items-center gap-3 p-3 cursor-pointer hover:bg-slate-50 ${disabled ? 'opacity-50' : ''}`}>
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        disabled={disabled}
+                        onChange={(e) => setBatchIds((prev) =>
+                          e.target.checked ? [...prev, p.id] : prev.filter((x) => x !== p.id)
+                        )}
+                        className="rounded text-primary-500"
+                      />
+                      <span className="flex-1">
+                        <span className="font-bold text-slate-800">{p.candidato_nombre}</span>
+                        <span className="text-slate-500"> · {p.estado.replace('_', ' ')}</span>
+                      </span>
+                      {p.entrevista_calificacion != null && (
+                        <span className="text-slate-500">Entrevista {p.entrevista_calificacion}/100</span>
+                      )}
+                      {p.evaluacion_porcentaje != null && (
+                        <span className="text-slate-500">Evaluación {p.evaluacion_porcentaje}%</span>
+                      )}
+                    </label>
+                  )
+                })}
+                {elegibles.length === 0 && (
+                  <div className="p-6 text-center text-slate-400">No hay candidatos elegibles para seleccionar.</div>
+                )}
+              </div>
+              <div className="flex justify-end gap-2">
+                <Button variant="secondary" className="text-xs" onClick={() => setShowBatchModal(false)}>Cancelar</Button>
+                <Button variant="primary" className="text-xs" onClick={handleSeleccionMasiva}>
+                  Confirmar selección ({batchIds.length})
+                </Button>
+              </div>
+            </div>
+          </Modal>
+        )
+      })()}
 
       {/* ───────────────────────────────────────────────────────── */}
       {/* MODAL: PAQUETE DE VINCULACIÓN (Hand-off)                  */}

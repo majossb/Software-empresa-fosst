@@ -515,6 +515,9 @@ class EvaluacionSerializer(_ScopedPostulacionMixin, serializers.ModelSerializer)
     tipo_evaluacion_display = serializers.CharField(source="get_tipo_evaluacion_display", read_only=True)
     estado_display = serializers.CharField(source="get_estado_display", read_only=True)
     porcentaje_obtenido = serializers.FloatField(read_only=True)
+    clasificacion = serializers.SerializerMethodField()
+    clasificacion_display = serializers.SerializerMethodField()
+    requiere_refuerzo = serializers.SerializerMethodField()
     evaluador_nombre = serializers.SerializerMethodField()
     archivo_informe_url = serializers.SerializerMethodField()
 
@@ -534,6 +537,9 @@ class EvaluacionSerializer(_ScopedPostulacionMixin, serializers.ModelSerializer)
             "puntaje_maximo",
             "porcentaje_aprobacion",
             "porcentaje_obtenido",
+            "clasificacion",
+            "clasificacion_display",
+            "requiere_refuerzo",
             "estado",
             "estado_display",
             "concepto",
@@ -543,6 +549,26 @@ class EvaluacionSerializer(_ScopedPostulacionMixin, serializers.ModelSerializer)
             "updated_at",
         ]
         read_only_fields = ["id", "created_at", "updated_at"]
+
+    def get_clasificacion(self, obj):
+        pct = obj.porcentaje_obtenido
+        if pct is None:
+            return None
+        if pct <= 60:
+            return "critico"
+        if pct < 81:
+            return "alerta"
+        return "apto"
+
+    def get_clasificacion_display(self, obj):
+        return {
+            "critico": "No continúa en el proceso",
+            "alerta": "Continúa (requiere refuerzo)",
+            "apto": "Apto para el cargo",
+        }.get(self.get_clasificacion(obj), "—")
+
+    def get_requiere_refuerzo(self, obj):
+        return self.get_clasificacion(obj) == "alerta"
 
     def get_evaluador_nombre(self, obj):
         if obj.evaluador:
@@ -672,6 +698,11 @@ class PostulacionListSerializer(serializers.ModelSerializer):
     vacante_codigo = serializers.CharField(source="proceso_seleccion.vacante.codigo", read_only=True)
     estado_display = serializers.CharField(source="get_estado_display", read_only=True)
     semaforo_etapas = serializers.SerializerMethodField()
+    entrevista_calificacion = serializers.SerializerMethodField()
+    entrevista_concepto = serializers.SerializerMethodField()
+    evaluacion_porcentaje = serializers.SerializerMethodField()
+    evaluacion_clasificacion = serializers.SerializerMethodField()
+    requiere_refuerzo = serializers.SerializerMethodField()
 
     class Meta:
         model = Postulacion
@@ -690,15 +721,59 @@ class PostulacionListSerializer(serializers.ModelSerializer):
             "fecha_postulacion",
             "puntuacion_general",
             "etapas_completadas",
+            "motivo_cierre",
             "es_activa",
             "es_excepcion",
             "semaforo_etapas",
+            "entrevista_calificacion",
+            "entrevista_concepto",
+            "evaluacion_porcentaje",
+            "evaluacion_clasificacion",
+            "requiere_refuerzo",
             "created_at",
         ]
         read_only_fields = fields
 
     def get_semaforo_etapas(self, obj):
         return calcular_semaforo_etapas(obj, obj.proceso_seleccion)
+
+    def _ultima_entrevista(self, obj):
+        entrevistas = list(obj.entrevistas.all())
+        if not entrevistas:
+            return None
+        return sorted(
+            entrevistas,
+            key=lambda e: (e.fecha_programada, e.created_at),
+            reverse=True,
+        )[0]
+
+    def _ultima_evaluacion(self, obj):
+        evaluaciones = list(obj.evaluaciones.all())
+        if not evaluaciones:
+            return None
+        return sorted(evaluaciones, key=lambda e: e.created_at, reverse=True)[0]
+
+    def get_entrevista_calificacion(self, obj):
+        ent = self._ultima_entrevista(obj)
+        return float(ent.calificacion) if ent and ent.calificacion is not None else None
+
+    def get_entrevista_concepto(self, obj):
+        ent = self._ultima_entrevista(obj)
+        return ent.concepto if ent else None
+
+    def get_evaluacion_porcentaje(self, obj):
+        ev = self._ultima_evaluacion(obj)
+        return ev.porcentaje_obtenido if ev else None
+
+    def get_evaluacion_clasificacion(self, obj):
+        ev = self._ultima_evaluacion(obj)
+        if not ev or ev.porcentaje_obtenido is None:
+            return None
+        pct = ev.porcentaje_obtenido
+        return "critico" if pct <= 60 else ("alerta" if pct < 81 else "apto")
+
+    def get_requiere_refuerzo(self, obj):
+        return self.get_evaluacion_clasificacion(obj) == "alerta"
 
 
 class PostulacionDetailSerializer(serializers.ModelSerializer):

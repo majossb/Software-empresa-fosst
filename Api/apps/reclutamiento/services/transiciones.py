@@ -41,6 +41,22 @@ class ExcepcionNoAutorizadaError(ReclutamientoDomainError):
     pass
 
 
+class EntrevistaDesfavorableError(ReclutamientoDomainError):
+    """La entrevista fue desfavorable: no se permite avanzar en el proceso."""
+    pass
+
+
+def ultima_entrevista_desfavorable(postulacion) -> bool:
+    """True si el proceso exige entrevista y la última entrevista fue desfavorable."""
+    try:
+        if not postulacion.proceso_seleccion.requiere_entrevista:
+            return False
+        ultima = postulacion.entrevistas.order_by("-fecha_programada", "-created_at").first()
+        return bool(ultima and ultima.concepto == "desfavorable")
+    except Exception:
+        return False
+
+
 # ── TABLA DE TRANSICIONES DECLARATIVA (Open/Closed) ───────────────────────────
 ESTADO_TRANSICIONES: Dict[str, List[str]] = {
     Postulacion.Estado.POSTULADO: [
@@ -132,6 +148,12 @@ def validar_seleccion_final(postulacion: Postulacion, contexto: Optional[Dict[st
     contexto = contexto or {}
     proceso = postulacion.proceso_seleccion
     vacante = proceso.vacante
+
+    # 0. Bloqueo si la entrevista fue desfavorable
+    if ultima_entrevista_desfavorable(postulacion):
+        raise EntrevistaDesfavorableError(
+            "No se puede seleccionar al candidato: la entrevista fue desfavorable."
+        )
 
     # 1. Verificar cupos disponibles
     if vacante.esta_cubierta and not contexto.get("es_excepcion"):

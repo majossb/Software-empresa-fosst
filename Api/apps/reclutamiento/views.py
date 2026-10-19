@@ -9,6 +9,7 @@ Convenciones respetadas:
 - Manejo determinista de excepciones de dominio con HTTP 400.
 """
 from django.contrib.auth import get_user_model
+from django.db import transaction
 from django.db.models import Q, Count
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
@@ -68,6 +69,7 @@ from apps.reclutamiento.services.transiciones import (
     MotivoRequeridoError,
     CuposAgotadosError,
     ExcepcionNoAutorizadaError,
+    EntrevistaDesfavorableError,
 )
 from apps.reclutamiento.services.postulacion import (
     transicionar_postulacion,
@@ -500,7 +502,7 @@ class PostulacionViewSet(EmpresaScopedViewSet):
                 },
                 status=status.HTTP_201_CREATED,
             )
-        except (TransicionInvalidaError, ExcepcionNoAutorizadaError) as e:
+        except (TransicionInvalidaError, ExcepcionNoAutorizadaError, EntrevistaDesfavorableError) as e:
             return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
     @action(detail=True, methods=["post"], url_path="registrar-evaluacion")
@@ -542,7 +544,7 @@ class PostulacionViewSet(EmpresaScopedViewSet):
                 },
                 status=status.HTTP_201_CREATED,
             )
-        except (TransicionInvalidaError, ExcepcionNoAutorizadaError) as e:
+        except (TransicionInvalidaError, ExcepcionNoAutorizadaError, EntrevistaDesfavorableError) as e:
             return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
     @action(detail=True, methods=["post"], url_path="registrar-validacion")
@@ -578,7 +580,7 @@ class PostulacionViewSet(EmpresaScopedViewSet):
                 },
                 status=status.HTTP_201_CREATED,
             )
-        except (TransicionInvalidaError, ExcepcionNoAutorizadaError) as e:
+        except (TransicionInvalidaError, ExcepcionNoAutorizadaError, EntrevistaDesfavorableError) as e:
             return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
     @action(detail=True, methods=["post"], url_path="seleccionar")
@@ -632,6 +634,216 @@ class PostulacionViewSet(EmpresaScopedViewSet):
         except (TransicionInvalidaError, MotivoRequeridoError) as e:
             return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
+    @action(detail=False, methods=["post"], url_path="seleccionar-masivo")
+    def seleccionar_masivo(self, request):
+        """
+        Selecciona en lote candidatos de un mismo proceso hasta cubrir los cupos.
+        Al cubrirse, RN-R06 cierra el resto y se notifica a todos.
+        """
+        ids = request.data.get("postulacion_ids") or []
+        if not isinstance(ids, list) or not ids:
+            return Response(
+                {"detail": "Debe indicar 'postulacion_ids' como lista."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        ids = list(dict.fromkeys([str(i) for i in ids]))
+
+        postulaciones = list(self.get_queryset().filter(id__in=ids))
+        if len(postulaciones) != len(ids):
+            return Response(
+                {"detail": "Alguna postulación no existe o no pertenece a su empresa."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        procesos = {str(p.proceso_seleccion_id) for p in postulaciones}
+        if len(procesos) != 1:
+            return Response(
+                {"detail": "Todas las postulaciones deben pertenecer al mismo proceso."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        vacante = postulaciones[0].proceso_seleccion.vacante
+        disponibles = vacante.cupos_disponibles
+        if len(postulaciones) > disponibles:
+            return Response(
+                {"detail": f"Solo hay {disponibles} cupo(s) disponible(s) en la vacante."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            with transaction.atomic():
+                vacante_locked = Vacante.objects.select_for_update().get(pk=vacante.pk)
+                for postulacion in postulaciones:
+                    # Compartir la instancia bloqueada para que el conteo de cupos sea consistente
+                    postulacion.proceso_seleccion.vacante = vacante_locked
+                    seleccionar_candidato(postulacion=postulacion, usuario=request.user)
+        except (
+            TransicionInvalidaError,
+            RequisitoIncumplidoError,
+            EtapaObligatoriaFaltanteError,
+            CuposAgotadosError,
+            ExcepcionNoAutorizadaError,
+            EntrevistaDesfavorableError,
+        ) as e:
+            return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+        vacante.refresh_from_db()
+        return Response({
+            "seleccionados": len(postulaciones),
+            "cupos_disponibles": vacante.cupos_disponibles,
+            "vacante_estado": vacante.estado,
+        })
+
+    @action(detail=True, methods=["post"], url_path="cerrar-por-falta-documentos")
+    def cerrar_por_falta_documentos(self, request, pk=None):
+        """Cierra la postulación como NO_CONTINUO por no cargar la documentación y notifica."""
+        postulacion = self.get_object()
+        if not postulacion.es_activa:
+            return Response(
+                {"detail": "La postulación ya se encuentra finalizada."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            postulacion_cerrada = cerrar_postulacion(
+                postulacion=postulacion,
+                nuevo_estado=Postulacion.Estado.NO_CONTINUO,
+                motivo="No cargó la documentación requerida para continuar el proceso de selección.",
+                usuario=request.user,
+                datos_adicionales={"causa": "falta_documentos"},
+            )
+            return Response(PostulacionDetailSerializer(postulacion_cerrada).data)
+        except (TransicionInvalidaError, MotivoRequeridoError) as e:
+            return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=False, methods=["get"], url_path="historico/exportar")
+    def exportar_historico(self, request):
+        """
+        Exporta el histórico de postulaciones con observaciones por filtro.
+        Formatos: csv (default), xlsx, pdf.
+        """
+        import csv
+        import io as _io
+        from datetime import datetime
+
+        from django.http import HttpResponse
+
+        formato = (request.query_params.get("formato") or "csv").lower()
+        qs = self.get_queryset().select_related(
+            "candidato", "proceso_seleccion__vacante"
+        ).prefetch_related(
+            "entrevistas", "evaluaciones", "validaciones_documentales"
+        ).order_by("-fecha_postulacion")
+
+        vacante_id = request.query_params.get("vacante_id")
+        if vacante_id:
+            qs = qs.filter(proceso_seleccion__vacante_id=vacante_id)
+        proceso_id = request.query_params.get("proceso_seleccion_id")
+        if proceso_id:
+            qs = qs.filter(proceso_seleccion_id=proceso_id)
+        estado = request.query_params.get("estado")
+        if estado:
+            qs = qs.filter(estado=estado)
+
+        header = [
+            "Vacante", "Candidato", "Documento", "Email", "Estado", "Motivo cierre",
+            "Entrevista", "Evaluación", "Validación", "Puntaje entrevista", "Puntaje evaluación",
+        ]
+
+        def fila(p):
+            ent = sorted(list(p.entrevistas.all()), key=lambda e: (e.fecha_programada, e.created_at), reverse=True)
+            eva = sorted(list(p.evaluaciones.all()), key=lambda e: e.created_at, reverse=True)
+            ent = ent[0] if ent else None
+            eva = eva[0] if eva else None
+            pct = eva.porcentaje_obtenido if eva else None
+            clasif = None
+            if pct is not None:
+                clasif = "crítico" if pct <= 60 else ("alerta" if pct < 81 else "apto")
+            ent_txt = (
+                f"{ent.get_concepto_display()} ({ent.calificacion or 'N/A'}/100). {ent.observaciones or ''}".strip()
+                if ent else ""
+            )
+            eva_txt = (
+                f"{pct}% - {clasif}. {eva.concepto or ''}".strip() if eva else ""
+            )
+            val_txt = "; ".join(
+                f"{v.get_tipo_verificacion_display()}: {v.get_estado_display()} ({v.detalles_verificacion or ''})"
+                for v in p.validaciones_documentales.all()
+            )
+            return [
+                f"{p.proceso_seleccion.vacante.codigo} - {p.proceso_seleccion.vacante.titulo}",
+                f"{p.candidato.nombres} {p.candidato.apellidos}",
+                p.candidato.documento,
+                p.candidato.email,
+                p.get_estado_display(),
+                p.motivo_cierre or "",
+                ent_txt,
+                eva_txt,
+                val_txt,
+                ent.calificacion if ent and ent.calificacion is not None else "",
+                pct if pct is not None else "",
+            ]
+
+        filas = [fila(p) for p in qs]
+        fecha = datetime.now().strftime("%Y%m%d_%H%M")
+
+        if formato == "xlsx":
+            from openpyxl import Workbook
+
+            wb = Workbook()
+            ws = wb.active
+            ws.title = "Histórico"
+            ws.append(header)
+            for r in filas:
+                ws.append(r)
+            for col in ws.columns:
+                ws.column_dimensions[col[0].column_letter].width = 24
+            buf = _io.BytesIO()
+            wb.save(buf)
+            buf.seek(0)
+            resp = HttpResponse(
+                buf.getvalue(),
+                content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            )
+            resp["Content-Disposition"] = f'attachment; filename="historico_postulaciones_{fecha}.xlsx"'
+            return resp
+
+        if formato == "pdf":
+            from reportlab.lib import colors as rl_colors
+            from reportlab.lib.pagesizes import A4, landscape
+            from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+            from reportlab.platypus import SimpleDocTemplate, LongTable, TableStyle, Paragraph, Spacer
+
+            buf = _io.BytesIO()
+            docpdf = SimpleDocTemplate(buf, pagesize=landscape(A4), leftMargin=12, rightMargin=12, topMargin=12, bottomMargin=12)
+            styles = getSampleStyleSheet()
+            cell_style = ParagraphStyle("cell", parent=styles["Normal"], fontSize=6.5, leading=8)
+            head_style = ParagraphStyle("head", parent=cell_style, textColor=rl_colors.white, fontName="Helvetica-Bold")
+
+            data = [[Paragraph(h, head_style) for h in header]]
+            for r in filas:
+                data.append([Paragraph(str(x), cell_style) for x in r])
+            t = LongTable(data, repeatRows=1)
+            t.setStyle(TableStyle([
+                ("BACKGROUND", (0, 0), (-1, 0), rl_colors.HexColor("#002D62")),
+                ("GRID", (0, 0), (-1, -1), 0.3, rl_colors.HexColor("#CCCCCC")),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("ROWBACKGROUNDS", (0, 1), (-1, -1), [rl_colors.white, rl_colors.HexColor("#F4F6F8")]),
+            ]))
+            docpdf.build([Paragraph("Histórico de Postulaciones — Reclutamiento y Selección", styles["Heading2"]), Spacer(1, 8), t])
+            resp = HttpResponse(buf.getvalue(), content_type="application/pdf")
+            resp["Content-Disposition"] = f'attachment; filename="historico_postulaciones_{fecha}.pdf"'
+            return resp
+
+        # CSV
+        resp = HttpResponse(content_type="text/csv; charset=utf-8")
+        resp["Content-Disposition"] = f'attachment; filename="historico_postulaciones_{fecha}.csv"'
+        resp.write("\ufeff")  # BOM para Excel
+        writer = csv.writer(resp)
+        writer.writerow(header)
+        for r in filas:
+            writer.writerow(r)
+        return resp
+
     @action(detail=True, methods=["post"], url_path="reabrir")
     def reabrir(self, request, pk=None):
         """
@@ -648,7 +860,7 @@ class PostulacionViewSet(EmpresaScopedViewSet):
                 usuario=request.user,
             )
             return Response(PostulacionDetailSerializer(postulacion_reabierta).data)
-        except (TransicionInvalidaError, ExcepcionNoAutorizadaError) as e:
+        except (TransicionInvalidaError, ExcepcionNoAutorizadaError, EntrevistaDesfavorableError) as e:
             return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
     @action(detail=True, methods=["post"], url_path="iniciar-vinculacion")

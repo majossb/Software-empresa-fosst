@@ -260,6 +260,9 @@ export interface Evaluacion {
   puntaje_maximo: number
   porcentaje_aprobacion: number
   porcentaje_obtenido?: number | null
+  clasificacion?: 'critico' | 'alerta' | 'apto' | null
+  clasificacion_display?: string
+  requiere_refuerzo?: boolean
   estado: string
   estado_display: string
   concepto?: string
@@ -301,9 +304,15 @@ export interface PostulacionListItem {
   fecha_postulacion: string
   puntuacion_general?: number | null
   etapas_completadas: string[]
+  motivo_cierre?: string
   es_activa: boolean
   es_excepcion: boolean
   semaforo_etapas: SemaforoEtapas
+  entrevista_calificacion?: number | null
+  entrevista_concepto?: string | null
+  evaluacion_porcentaje?: number | null
+  evaluacion_clasificacion?: 'critico' | 'alerta' | 'apto' | null
+  requiere_refuerzo?: boolean
   created_at: string
 }
 

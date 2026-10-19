@@ -11,7 +11,10 @@ from apps.reclutamiento.services.transiciones import (
     VALIDADORES_DESTINO,
     TransicionInvalidaError,
     ExcepcionNoAutorizadaError,
+    EntrevistaDesfavorableError,
+    ultima_entrevista_desfavorable,
 )
+from apps.reclutamiento.services.notificaciones import notificar_resultado
 
 
 @transaction.atomic
@@ -31,6 +34,16 @@ def transicionar_postulacion(
     """
     contexto = contexto or {}
     estado_anterior = postulacion.estado
+
+    # 0. Bloqueo por entrevista desfavorable (no permite avanzar a etapas posteriores)
+    if nuevo_estado in (
+        Postulacion.Estado.EN_EVALUACION,
+        Postulacion.Estado.EN_VALIDACION,
+        Postulacion.Estado.SELECCIONADO,
+    ) and ultima_entrevista_desfavorable(postulacion):
+        raise EntrevistaDesfavorableError(
+            "No puede continuar el proceso: la entrevista fue desfavorable."
+        )
 
     # 1. Validar si la transición está permitida en la tabla declarativa
     estados_permitidos = ESTADO_TRANSICIONES.get(estado_anterior, [])
@@ -195,6 +208,7 @@ def seleccionar_candidato(
         es_excepcion=es_excepcion,
         justificacion_excepcion=justificacion_excepcion,
     )
+    notificar_resultado(postulacion, "seleccionado")
 
     # 2. Incrementar cupos cubiertos en la Vacante
     vacante.numero_seleccionados += 1
@@ -219,12 +233,12 @@ def seleccionar_candidato(
         )
 
         for otra in otras_activas:
-            transicionar_postulacion(
+            cerrar_postulacion(
                 postulacion=otra,
                 nuevo_estado=Postulacion.Estado.NO_SELECCIONADO,
-                usuario=usuario,
                 motivo=f"Vacante cubierta — Se completaron los {vacante.numero_cupos} cupo(s) disponibles para este proceso.",
-                contexto={"cierre_automatico_por_cupos": True},
+                usuario=usuario,
+                datos_adicionales={"cierre_automatico_por_cupos": True},
             )
 
     return postulacion
@@ -250,13 +264,23 @@ def cerrar_postulacion(
             f"'{nuevo_estado}' no es un estado válido de cierre."
         )
 
-    return transicionar_postulacion(
+    resultado = transicionar_postulacion(
         postulacion=postulacion,
         nuevo_estado=nuevo_estado,
         usuario=usuario,
         motivo=motivo,
         contexto=datos_adicionales or {},
     )
+
+    tipo_notificacion = {
+        Postulacion.Estado.NO_SELECCIONADO: "no_seleccionado",
+        Postulacion.Estado.NO_CONTINUO: "no_continuo",
+        Postulacion.Estado.RETIRO_CANDIDATURA: "retiro",
+    }.get(nuevo_estado)
+    if tipo_notificacion:
+        notificar_resultado(resultado, tipo_notificacion, motivo)
+
+    return resultado
 
 
 @transaction.atomic

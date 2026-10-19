@@ -181,6 +181,30 @@ export const reclutamientoService = {
     return apiClient.post<any>(`/reclutamiento/postulaciones/${id}/iniciar-vinculacion/`, {})
   },
 
+  seleccionarMasivo: (postulacionIds: string[]) => {
+    return apiClient.post<{ seleccionados: number; cupos_disponibles: number; vacante_estado: string }>(
+      '/reclutamiento/postulaciones/seleccionar-masivo/',
+      { postulacion_ids: postulacionIds }
+    )
+  },
+
+  cerrarPorFaltaDocumentos: (id: string) => {
+    return apiClient.post<PostulacionDetail>(`/reclutamiento/postulaciones/${id}/cerrar-por-falta-documentos/`, {})
+  },
+
+  exportarHistorico: async (formato: 'csv' | 'xlsx' | 'pdf', params?: { vacante_id?: string; estado?: string }) => {
+    const token = localStorage.getItem('token')
+    const BASE_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8000/api'
+    const query = new URLSearchParams({ formato })
+    if (params?.vacante_id) query.set('vacante_id', params.vacante_id)
+    if (params?.estado) query.set('estado', params.estado)
+    const res = await fetch(`${BASE_URL}/reclutamiento/postulaciones/historico/exportar/?${query.toString()}`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    })
+    if (!res.ok) throw new Error('No se pudo exportar el histórico.')
+    return res.blob()
+  },
+
   // ── 6. Portal Público del Candidato ─────────────────────────
   getVacantesPublicas: (params?: { search?: string; modalidad?: string; empresa_id?: string }) => {
     const query = new URLSearchParams()
