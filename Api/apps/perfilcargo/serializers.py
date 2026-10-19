@@ -111,6 +111,14 @@ class PerfilCargoSerializer(serializers.ModelSerializer):
     trabajadores_count = serializers.IntegerField(read_only=True)
     vacantes_activas_count = serializers.IntegerField(read_only=True, default=0)
     procesos_activos_count = serializers.IntegerField(read_only=True, default=0)
+    sede_nombre = serializers.SerializerMethodField()
+    sede_ciudad = serializers.SerializerMethodField()
+
+    def get_sede_nombre(self, obj):
+        return obj.sede.nombre if obj.sede_id else None
+
+    def get_sede_ciudad(self, obj):
+        return obj.sede.ciudad if obj.sede_id else None
 
     class Meta:
         model = PerfilCargo

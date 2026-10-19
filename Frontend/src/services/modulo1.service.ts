@@ -71,6 +71,8 @@ export interface PerfilCargoListItem {
   version_actual: number
   sede: string | null
   sede_id: string | null
+  sede_nombre?: string | null
+  sede_ciudad?: string | null
   activo?: boolean
   trabajadores_count?: number
   vacantes_activas_count?: number
@@ -83,6 +85,8 @@ export interface PerfilCargoDetail {
   nombre_cargo: string
   area: string | null
   sede_id: string | null
+  sede_nombre?: string | null
+  sede_ciudad?: string | null
   nodo_organigrama_id: string | null
   proceso_id: string | null
   nivel_riesgo: number | null
@@ -109,7 +113,7 @@ export interface PerfilCargoDetail {
   requiere_suplencia?: boolean
   impacto_descripcion?: string | null
   naturaleza_descripcion?: string | null
-  sede?: { id: string; nombre: string } | null
+  sede?: string | null
 }
 
 // ── Objeto del Servicio ──────────────────────────────────────────────

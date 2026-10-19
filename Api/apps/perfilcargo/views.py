@@ -41,7 +41,7 @@ class PerfilCargoListView(APIView):
         sede_id = request.query_params.get('sede_id')
         incluir_inactivos = request.query_params.get('incluir_inactivos') in ('1', 'true', 'True', 'all')
 
-        queryset = PerfilCargo.objects.filter(empresa=empresa)
+        queryset = PerfilCargo.objects.filter(empresa=empresa).select_related("sede")
         if not incluir_inactivos:
             queryset = queryset.filter(activo=True)
         if area:

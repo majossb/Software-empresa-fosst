@@ -229,7 +229,11 @@ export default function PerfilCargoDetailView() {
                 </div>
                 <div className="flex justify-between border-b border-slate-200 pb-1">
                   <span className="text-slate-600 font-medium">Lugar de trabajo:</span>
-                  <span className="font-semibold text-slate-800">{perfil.sede?.nombre || 'Sedes operativas y rutas asignadas'}</span>
+                  <span className="font-semibold text-slate-800">
+                    {perfil.sede_nombre
+                      ? `${perfil.sede_nombre}${perfil.sede_ciudad ? ` · ${perfil.sede_ciudad}` : ''}`
+                      : 'Sedes operativas y rutas asignadas'}
+                  </span>
                 </div>
                 <div className="flex justify-between items-center pt-0.5">
                   <span className="text-slate-600 font-medium">Criticidad del cargo:</span>

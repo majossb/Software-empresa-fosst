@@ -236,10 +236,15 @@ export default function PerfilesCargoView() {
                       {perfil.area || <span className="text-slate-400 italic">No especificada</span>}
                     </TableCell>
                     <TableCell className="text-slate-600">
-                      {perfil.sede ? (
+                      {perfil.sede_nombre || perfil.sede ? (
                         <span className="flex items-center gap-1.5">
                           <MapPin className="w-3.5 h-3.5 text-slate-400" />
-                          {perfil.sede}
+                          <span>
+                            {perfil.sede_nombre || perfil.sede}
+                            {perfil.sede_ciudad && (
+                              <span className="block text-[10px] text-slate-400">{perfil.sede_ciudad}</span>
+                            )}
+                          </span>
                         </span>
                       ) : (
                         <span className="text-slate-400 italic">No especificada</span>
