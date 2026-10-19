@@ -2,7 +2,7 @@
 Servicio genérico de interpretación IA para FOSST V.I.D.A.
 
 Generaliza el patrón de IAContextoService (apps/empresas/services_ia.py):
-  - ANTHROPIC_API_KEY → Claude / fallback a mock inteligente
+  - GEMINI_API_KEY → Gemini / fallback a mock inteligente
   - Output JSON estructurado (no texto libre parseado con regex)
   - Logging de prompt/respuesta para auditoría legal
   - Deduplicación por hash de contexto
@@ -41,7 +41,7 @@ class IAInterpretacionService:
     Punto de entrada único para todas las interpretaciones IA del sistema.
 
     Sigue exactamente el patrón de IAContextoService:
-      1. Verifica ANTHROPIC_API_KEY
+      1. Verifica GEMINI_API_KEY
       2. Si existe: llama a Claude con prompt estructurado → parsea JSON
       3. Si falla o no hay key: genera mock inteligente
       4. En ambos casos: loguea prompt + respuesta para auditoría
@@ -49,7 +49,7 @@ class IAInterpretacionService:
 
     @staticmethod
     def _get_api_key():
-        return getattr(settings, "ANTHROPIC_API_KEY", "")
+        return getattr(settings, "GEMINI_API_KEY", "")
 
     @staticmethod
     def _hash_contexto(tipo: str, contexto: dict) -> str:
@@ -70,7 +70,7 @@ class IAInterpretacionService:
 
         Returns:
             Dict con los campos del output_schema del tipo solicitado.
-            Incluye siempre el campo adicional "fuente" ("Anthropic Claude" o "Mock Inteligente").
+            Incluye siempre el campo adicional "fuente" ("Gemini (...)" o "Mock Inteligente").
 
         Raises:
             ValueError: si el tipo no está registrado
@@ -103,12 +103,12 @@ class IAInterpretacionService:
         prompt_text = prompt_data["prompt"]
         output_schema = prompt_data["output_schema"]
 
-        # Intentar llamada real a Claude
+        # Intentar llamada real a Gemini
         api_key = cls._get_api_key()
         resultado = None
 
         if api_key:
-            resultado = cls._llamar_claude(tipo, prompt_text, output_schema, api_key)
+            resultado = cls._llamar_gemini(tipo, prompt_text, output_schema, api_key)
 
         # Fallback a mock si no hay API key o si la llamada falló
         if resultado is None:
@@ -123,52 +123,54 @@ class IAInterpretacionService:
         return resultado
 
     @classmethod
-    def _llamar_claude(cls, tipo, prompt_text, output_schema, api_key):
-        """Llama a Anthropic Claude — patrón idéntico a IAContextoService."""
+    def _llamar_gemini(cls, tipo, prompt_text, output_schema, api_key):
+        """Llama a Gemini (Google AI Studio)."""
         try:
-            from anthropic import Anthropic
-            client = Anthropic(api_key=api_key)
+            import httpx
+
+            model = getattr(settings, "GEMINI_MODEL", "gemini-3.8-flash")
+            timeout = getattr(settings, "GEMINI_TIMEOUT", 30)
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+            payload = {
+                "contents": [{"parts": [{"text": prompt_text}]}],
+                "generationConfig": {"temperature": 0.3, "responseMimeType": "application/json"},
+            }
 
             logger.info(
-                "[IAInterpretacionService] Llamando a Claude para tipo=%s (prompt %d chars)",
+                "[IAInterpretacionService] Llamando a Gemini para tipo=%s (prompt %d chars)",
                 tipo, len(prompt_text),
             )
 
-            response = client.messages.create(
-                model="claude-3-5-sonnet-20241022",
-                max_tokens=1200,
-                temperature=0.3,
-                messages=[{"role": "user", "content": prompt_text}],
-            )
+            with httpx.Client(timeout=timeout) as client:
+                resp = client.post(url, params={"key": api_key}, json=payload)
+                resp.raise_for_status()
+                data = resp.json()
 
-            text = response.content[0].text if response.content else ""
+            text = data["candidates"][0]["content"]["parts"][0]["text"] or ""
 
-            # Parseo robusto: buscar JSON en la respuesta (mismo patrón que IAContextoService)
             start = text.find("{")
             end = text.rfind("}") + 1
             if start == -1 or end == 0:
-                raise ValueError(f"Respuesta de Claude no contiene JSON válido: {text[:200]}")
+                raise ValueError(f"Respuesta de Gemini no contiene JSON válido: {text[:200]}")
 
-            cleaned = text[start:end]
-            parsed = json.loads(cleaned)
+            parsed = json.loads(text[start:end])
 
-            # Validar que tenga los campos esperados
             missing = [k for k in output_schema if k not in parsed]
             if missing:
                 logger.warning(
-                    "[IAInterpretacionService] Campos faltantes en respuesta Claude: %s", missing,
+                    "[IAInterpretacionService] Campos faltantes en respuesta Gemini: %s", missing,
                 )
 
             logger.info(
-                "[IAInterpretacionService] Respuesta Claude exitosa para tipo=%s", tipo,
+                "[IAInterpretacionService] Respuesta Gemini exitosa para tipo=%s", tipo,
             )
 
-            parsed["fuente"] = "Anthropic Claude"
+            parsed["fuente"] = f"Gemini ({model})"
             return parsed
 
         except Exception as e:
             logger.error(
-                "[IAInterpretacionService] Error llamando a Claude para tipo=%s: %s. Usando mock.",
+                "[IAInterpretacionService] Error llamando a Gemini para tipo=%s: %s. Usando mock.",
                 tipo, e,
             )
             return None

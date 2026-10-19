@@ -5,265 +5,268 @@ from .utils_ciiu import buscar_por_codigo_768, serializar_para_prompt
 
 logger = logging.getLogger(__name__)
 
+
+def _parse_json(text):
+    """Extrae y parsea el primer objeto JSON de la respuesta del modelo."""
+    text = (text or "").strip()
+    start = text.find("{")
+    end = text.rfind("}")
+    if start != -1 and end != -1 and end > start:
+        text = text[start:end + 1]
+    return json.loads(text)
+
+
 class IAContextoService:
+    """
+    Servicio de IA para el contexto organizacional (Módulo 0).
+    Cadena de proveedores: Gemini (nube) -> Ollama (local, opcional) -> Mock Inteligente.
+    """
 
     @staticmethod
     def get_api_key():
-        return getattr(settings, "ANTHROPIC_API_KEY", "")
+        return getattr(settings, "GEMINI_API_KEY", "")
+
+    # ── Proveedores de IA ────────────────────────────────────────
+    @classmethod
+    def _gemini_json(cls, prompt, temperature=0.7):
+        """Llama a Gemini (Google AI Studio) y devuelve (json, fuente)."""
+        import httpx
+
+        key = cls.get_api_key()
+        model = getattr(settings, "GEMINI_MODEL", "gemini-3.8-flash")
+        timeout = getattr(settings, "GEMINI_TIMEOUT", 30)
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+        payload = {
+            "contents": [{"parts": [{"text": prompt}]}],
+            "generationConfig": {
+                "temperature": temperature,
+                "responseMimeType": "application/json",
+            },
+        }
+        with httpx.Client(timeout=timeout) as client:
+            resp = client.post(url, params={"key": key}, json=payload)
+            resp.raise_for_status()
+            data = resp.json()
+        text = data["candidates"][0]["content"]["parts"][0]["text"]
+        return _parse_json(text), f"Gemini ({model})"
+
+    @classmethod
+    def _ollama_json(cls, prompt, temperature=0.7):
+        """Fallback local con Ollama (opcional, desactivado por defecto)."""
+        import httpx
+
+        base = getattr(settings, "OLLAMA_URL", "http://host.docker.internal:11434").rstrip("/")
+        model = getattr(settings, "OLLAMA_MODEL", "qwen2.5:0.5b")
+        payload = {
+            "model": model,
+            "prompt": prompt,
+            "stream": False,
+            "format": "json",
+            "options": {"temperature": temperature},
+        }
+        with httpx.Client(timeout=getattr(settings, "OLLAMA_TIMEOUT", 120)) as client:
+            resp = client.post(f"{base}/api/generate", json=payload)
+            resp.raise_for_status()
+            data = resp.json()
+        return _parse_json(data.get("response", "")), f"Ollama ({model})"
+
+    @classmethod
+    def _call_ia(cls, prompt, temperature=0.7):
+        """Devuelve (json | None, fuente). Usa Gemini y, si está habilitado, Ollama."""
+        if cls.get_api_key():
+            try:
+                return cls._gemini_json(prompt, temperature)
+            except Exception as e:
+                logger.error(f"[IAContextoService] Gemini falló: {e}")
+        if getattr(settings, "OLLAMA_ENABLED", False):
+            try:
+                return cls._ollama_json(prompt, temperature)
+            except Exception as e:
+                logger.error(f"[IAContextoService] Ollama falló: {e}")
+        return None, None
 
     @classmethod
     def sugerir_identidad(cls, nombre, sector, ciiu_desc):
-        api_key = cls.get_api_key()
+        prompt = (
+            "Actúa como un consultor experto en planeación estratégica corporativa y salud y seguridad en el trabajo (SST).\n"
+            f"Genera una propuesta de Misión, Visión y Valores Institucionales altamente profesional, moderna y personalizada para la siguiente empresa:\n"
+            f"- Nombre: \"{nombre}\"\n"
+            f"- Sector Económico: \"{sector or 'General'}\"\n"
+            f"- Actividad Económica (CIIU): \"{ciiu_desc or 'No especificada'}\"\n\n"
+            "Requisitos indispensables del formato:\n"
+            "La respuesta DEBE ser EXCLUSIVAMENTE un objeto JSON válido, sin textos explicativos introductorios ni de cierre, con la siguiente estructura exacta:\n"
+            "{\n"
+            "  \"mision\": \"Texto fluido y aspiracional de la misión de 2 a 3 oraciones...\",\n"
+            "  \"vision\": \"Texto proyectado a 2030 de la visión corporativa...\",\n"
+            "  \"valores\": [\"Valor1\", \"Valor2\", \"Valor3\", \"Valor4\", \"Valor5\"]\n"
+            "}\n\n"
+            "Asegúrate de que los valores corporativos incluyan al menos uno explícitamente alineado con la SST (ej. Seguridad, Autocuidado, Prevención o Bienestar)."
+        )
 
-        if not api_key:
-            logger.info("[IAContextoService] ANTHROPIC_API_KEY no detectada. Usando Mock Inteligente.")
-            identidad = cls.generar_identidad_mock(nombre, sector, ciiu_desc)
-            return {"identidad": identidad, "fuente": "Mock Inteligente v2.0"}
+        data, fuente = cls._call_ia(prompt, temperature=0.7)
+        if data:
+            return {"identidad": data, "fuente": fuente}
 
-        try:
-            from anthropic import Anthropic
-            client = Anthropic(api_key=api_key, timeout=30.0, max_retries=1)
-
-            prompt = (
-                "Actúa como un consultor experto en planeación estratégica corporativa y salud y seguridad en el trabajo (SST).\n"
-                f"Genera una propuesta de Misión, Visión y Valores Institucionales altamente profesional, moderna y personalizada para la siguiente empresa:\n"
-                f"- Nombre: \"{nombre}\"\n"
-                f"- Sector Económico: \"{sector or 'General'}\"\n"
-                f"- Actividad Económica (CIIU): \"{ciiu_desc or 'No especificada'}\"\n\n"
-                "Requisitos indispensables del formato:\n"
-                "La respuesta DEBE ser EXCLUSIVAMENTE un objeto JSON válido, sin textos explicativos introductorios ni de cierre, con la siguiente estructura exacta:\n"
-                "{\n"
-                "  \"mision\": \"Texto fluido y aspiracional de la misión de 2 a 3 oraciones...\",\n"
-                "  \"vision\": \"Texto proyectado a 2030 de la visión corporativa...\",\n"
-                "  \"valores\": [\"Valor1\", \"Valor2\", \"Valor3\", \"Valor4\", \"Valor5\"]\n"
-                "}\n\n"
-                "Asegúrate de que los valores corporativos incluyan al menos uno explícitamente alineado con la SST (ej. Seguridad, Autocuidado, Prevención o Bienestar)."
-            )
-
-            response = client.messages.create(
-                model="claude-3-5-sonnet-20241022",
-                max_tokens=1000,
-                temperature=0.7,
-                messages=[{"role": "user", "content": prompt}]
-            )
-
-            text = response.content[0].text if response.content else ""
-            cleaned = text.strip()[text.find("{"):text.rfind("}") + 1]
-            parsed = json.loads(cleaned)
-
-            return {"identidad": parsed, "fuente": "Anthropic Claude"}
-        except Exception as e:
-            logger.error(f"[IAContextoService] Error llamando a Anthropic, usando fallback mock: {e}")
-            identidad = cls.generar_identidad_mock(nombre, sector, ciiu_desc)
-            return {"identidad": identidad, "fuente": "Mock Inteligente v2.0"}
+        logger.info("[IAContextoService] Sin proveedor de IA disponible; usando Mock Inteligente.")
+        return {"identidad": cls.generar_identidad_mock(nombre, sector, ciiu_desc), "fuente": "Mock Inteligente v2.0"}
 
     @classmethod
     def sugerir_procesos(cls, nombre, sector, ciiu_codigo, ciiu_desc):
-        api_key = cls.get_api_key()
+        prompt = (
+            "Actúa como un experto consultor organizacional de procesos y sistemas de gestión integrados (ISO 9001, ISO 45001).\n"
+            f"Diseña el mapa de procesos de primer nivel adecuado para la siguiente empresa:\n"
+            f"- Nombre: \"{nombre}\"\n"
+            f"- Sector: \"{sector or 'General'}\"\n"
+            f"- Código CIIU: \"{ciiu_codigo or 'No especificado'}\"\n"
+            f"- Descripción CIIU: \"{ciiu_desc or 'No especificada'}\"\n\n"
+            "Genera una lista equilibrada de 6 a 9 procesos esenciales, clasificados rigurosamente en \"estrategico\", \"misional\" y \"apoyo\".\n"
+            "La respuesta DEBE ser EXCLUSIVAMENTE un objeto JSON válido, sin textos explicativos introductorios ni de cierre, con la siguiente estructura exacta:\n"
+            "{\n"
+            "  \"procesos\": [\n"
+            "    {\n"
+            "      \"nombre\": \"Nombre claro del proceso (ej. Gestión de Calidad)\",\n"
+            "      \"tipo\": \"estrategico\",\n"
+            "      \"descripcion\": \"Descripción concisa de sus objetivos e impacto.\"\n"
+            "    },\n"
+            "    ...\n"
+            "  ]\n"
+            "}\n\n"
+            "Clasificaciones aceptadas en \"tipo\": \"estrategico\" | \"misional\" | \"apoyo\"."
+        )
 
-        if not api_key:
-            logger.info("[IAContextoService] ANTHROPIC_API_KEY no detectada. Usando Mock Inteligente.")
-            procesos = cls.generar_procesos_mock(sector, ciiu_codigo, ciiu_desc)
-            return {"procesos": procesos, "fuente": "Mock Inteligente v2.0"}
+        data, fuente = cls._call_ia(prompt, temperature=0.6)
+        if data:
+            return {"procesos": data.get("procesos", []), "fuente": fuente}
 
-        try:
-            from anthropic import Anthropic
-            client = Anthropic(api_key=api_key, timeout=30.0, max_retries=1)
-
-            prompt = (
-                "Actúa como un experto consultor organizacional de procesos y sistemas de gestión integrados (ISO 9001, ISO 45001).\n"
-                f"Diseña el mapa de procesos de primer nivel adecuado para la siguiente empresa:\n"
-                f"- Nombre: \"{nombre}\"\n"
-                f"- Sector: \"{sector or 'General'}\"\n"
-                f"- Código CIIU: \"{ciiu_codigo or 'No especificado'}\"\n"
-                f"- Descripción CIIU: \"{ciiu_desc or 'No especificada'}\"\n\n"
-                "Genera una lista equilibrada de 6 a 9 procesos esenciales, clasificados rigurosamente en \"estrategico\", \"misional\" y \"apoyo\".\n"
-                "La respuesta DEBE ser EXCLUSIVAMENTE un objeto JSON válido, sin textos explicativos introductorios ni de cierre, con la siguiente estructura exacta:\n"
-                "{\n"
-                "  \"procesos\": [\n"
-                "    {\n"
-                "      \"nombre\": \"Nombre claro del proceso (ej. Gestión de Calidad)\",\n"
-                "      \"tipo\": \"estrategico\",\n"
-                "      \"descripcion\": \"Descripción concisa de sus objetivos e impacto.\"\n"
-                "    },\n"
-                "    ...\n"
-                "  ]\n"
-                "}\n\n"
-                "Clasificaciones aceptadas en \"tipo\": \"estrategico\" | \"misional\" | \"apoyo\"."
-            )
-
-            response = client.messages.create(
-                model="claude-3-5-sonnet-20241022",
-                max_tokens=1500,
-                temperature=0.6,
-                messages=[{"role": "user", "content": prompt}]
-            )
-
-            text = response.content[0].text if response.content else ""
-            cleaned = text.strip()[text.find("{"):text.rfind("}") + 1]
-            parsed = json.loads(cleaned)
-
-            return {"procesos": parsed.get("procesos", []), "fuente": "Anthropic Claude"}
-        except Exception as e:
-            logger.error(f"[IAContextoService] Error llamando a Anthropic, usando fallback mock: {e}")
-            procesos = cls.generar_procesos_mock(sector, ciiu_codigo, ciiu_desc)
-            return {"procesos": procesos, "fuente": "Mock Inteligente v2.0"}
+        logger.info("[IAContextoService] Sin proveedor de IA disponible; usando Mock Inteligente.")
+        return {"procesos": cls.generar_procesos_mock(sector, ciiu_codigo, ciiu_desc), "fuente": "Mock Inteligente v2.0"}
 
     @classmethod
     def sugerir_codigo_ciiu(cls, nombre, sector, descripcion_actividad, candidatos):
-        api_key = cls.get_api_key()
+        prompt = (
+            "Actúa como un consultor experto en el Decreto 768 / CIIU Rev. 4 A.C. de Colombia y salud y seguridad en el trabajo (SST).\n"
+            "Tu objetivo es sugerir la actividad económica principal y hasta 3 actividades económicas secundarias aplicables a partir del contexto de la empresa y una lista de códigos candidatos pre-filtrados.\n\n"
+            "Empresa:\n"
+            f"- Nombre: \"{nombre}\"\n"
+            f"- Sector: \"{sector or 'General'}\"\n"
+            f"- Descripción de actividad del usuario: \"{descripcion_actividad or 'No provista'}\"\n\n"
+            "Códigos CIIU 768 Candidatos (JSON compacto):\n"
+            f"{serializar_para_prompt(candidatos)}\n\n"
+            "Requisitos del análisis:\n"
+            "1. Analiza cuál de los códigos candidatos se ajusta mejor como la actividad principal de la empresa.\n"
+            "2. Identifica si hay otras actividades secundarias complementarias y necesarias en la operación de la empresa dentro de los candidatos.\n"
+            "3. Para cada actividad sugerida, redacta una justificación breve, clara y profesional en español de por qué aplica y su relación con el nivel de riesgo de la empresa.\n"
+            "4. Si la lista de candidatos está vacía o ningún candidato aplica bien, selecciona el candidato más cercano e indica por qué.\n\n"
+            "La respuesta DEBE ser EXCLUSIVAMENTE un objeto JSON válido, sin textos explicativos introductorios ni de cierre, con la siguiente estructura exacta:\n"
+            "{\n"
+            "  \"actividad_principal\": {\n"
+            "    \"codigo_768\": \"código de 7 dígitos seleccionado de la lista\",\n"
+            "    \"justificacion\": \"breve justificación de la selección...\"\n"
+            "  },\n"
+            "  \"actividades_secundarias\": [\n"
+            "    {\n"
+            "      \"codigo_768\": \"código de 7 dígitos seleccionado\",\n"
+            "      \"justificacion\": \"breve justificación...\"\n"
+            "    }\n"
+            "  ]\n"
+            "}"
+        )
 
-        if not api_key:
-            logger.info("[IAContextoService] ANTHROPIC_API_KEY no detectada. Usando Mock Inteligente para CIIU.")
-            sugerencia = cls.generar_sugerencia_ciiu_mock(nombre, sector, descripcion_actividad, candidatos)
-            return {"sugerencia": sugerencia, "fuente": "Mock Inteligente v2.0"}
+        data, fuente = cls._call_ia(prompt, temperature=0.1)
+        if data:
+            try:
+                suggested_principal_code = data["actividad_principal"]["codigo_768"]
+                catalog_principal = buscar_por_codigo_768(suggested_principal_code)
+                enriched_principal = catalog_principal or next(
+                    (c for c in candidatos if c["codigo_768"] == suggested_principal_code), None
+                ) or (candidatos[0] if candidatos else catalog_principal)
 
-        try:
-            from anthropic import Anthropic
-            client = Anthropic(api_key=api_key, timeout=30.0, max_retries=1)
+                activity_principal = {
+                    **enriched_principal,
+                    "justificacion": data["actividad_principal"]["justificacion"],
+                }
 
-            prompt = (
-                "Actúa como un consultor experto en el Decreto 768 / CIIU Rev. 4 A.C. de Colombia y salud y seguridad en el trabajo (SST).\n"
-                "Tu objetivo es sugerir la actividad económica principal y hasta 3 actividades económicas secundarias aplicables a partir del contexto de la empresa y una lista de códigos candidatos pre-filtrados.\n\n"
-                "Empresa:\n"
-                f"- Nombre: \"{nombre}\"\n"
-                f"- Sector: \"{sector or 'General'}\"\n"
-                f"- Descripción de actividad del usuario: \"{descripcion_actividad or 'No provista'}\"\n\n"
-                "Códigos CIIU 768 Candidatos (JSON compacto):\n"
-                f"{serializar_para_prompt(candidatos)}\n\n"
-                "Requisitos del análisis:\n"
-                "1. Analiza cuál de los códigos candidatos se ajusta mejor como la actividad principal de la empresa.\n"
-                "2. Identifica si hay otras actividades secundarias complementarias y necesarias en la operación de la empresa dentro de los candidatos.\n"
-                "3. Para cada actividad sugerida, redacta una justificación breve, clara y profesional en español de por qué aplica y su relación con el nivel de riesgo de la empresa.\n"
-                "4. Si la lista de candidatos está vacía o ningún candidato aplica bien, selecciona el candidato más cercano e indica por qué.\n\n"
-                "La respuesta DEBE ser EXCLUSIVAMENTE un objeto JSON válido, sin textos explicativos introductorios ni de cierre, con la siguiente estructura exacta:\n"
-                "{\n"
-                "  \"actividad_principal\": {\n"
-                "    \"codigo_768\": \"código de 7 dígitos seleccionado de la lista\",\n"
-                "    \"justificacion\": \"breve justificación de la selección...\"\n"
-                "  },\n"
-                "  \"actividades_secundarias\": [\n"
-                "    {\n"
-                "      \"codigo_768\": \"código de 7 dígitos seleccionado\",\n"
-                "      \"justificacion\": \"breve justificación...\"\n"
-                "    }\n"
-                "  ]\n"
-                "}"
-            )
+                activities_secundarias = []
+                for sec in data.get("actividades_secundarias", []):
+                    sec_code = sec["codigo_768"]
+                    catalog_sec = buscar_por_codigo_768(sec_code)
+                    enriched_sec = catalog_sec or next(
+                        (c for c in candidatos if c["codigo_768"] == sec_code), None
+                    )
+                    if enriched_sec:
+                        activities_secundarias.append({**enriched_sec, "justificacion": sec["justificacion"]})
 
-            response = client.messages.create(
-                model="claude-3-5-sonnet-20241022",
-                max_tokens=800,
-                temperature=0.1,
-                messages=[{"role": "user", "content": prompt}]
-            )
+                return {
+                    "sugerencia": {
+                        "actividad_principal": activity_principal,
+                        "actividades_secundarias": activities_secundarias,
+                    },
+                    "fuente": fuente,
+                }
+            except Exception as e:
+                logger.error(f"[IAContextoService] Error procesando sugerencia CIIU de IA: {e}")
 
-            text = response.content[0].text if response.content else ""
-            cleaned = text.strip()[text.find("{"):text.rfind("}") + 1]
-            parsed = json.loads(cleaned)
-
-            suggested_principal_code = parsed["actividad_principal"]["codigo_768"]
-            catalog_principal = buscar_por_codigo_768(suggested_principal_code)
-            enriched_principal = catalog_principal or next((c for c in candidatos if c["codigo_768"] == suggested_principal_code), None) or candidatos[0]
-
-            activity_principal = {**enriched_principal, "justificacion": parsed["actividad_principal"]["justificacion"]}
-
-            activities_secundarias = []
-            for sec in parsed.get("actividades_secundarias", []):
-                sec_code = sec["codigo_768"]
-                catalog_sec = buscar_por_codigo_768(sec_code)
-                enriched_sec = catalog_sec or next((c for c in candidatos if c["codigo_768"] == sec_code), None)
-                if enriched_sec:
-                    activities_secundarias.append({**enriched_sec, "justificacion": sec["justificacion"]})
-
-            return {
-                "sugerencia": {
-                    "actividad_principal": activity_principal,
-                    "actividades_secundarias": activities_secundarias,
-                },
-                "fuente": "Anthropic Claude"
-            }
-        except Exception as e:
-            logger.error(f"[IAContextoService] Error llamando a Anthropic para sugerir CIIU, usando fallback: {e}")
-            sugerencia = cls.generar_sugerencia_ciiu_mock(nombre, sector, descripcion_actividad, candidatos)
-            return {"sugerencia": sugerencia, "fuente": "Mock Inteligente v2.0"}
+        logger.info("[IAContextoService] Sin proveedor de IA disponible; usando Mock Inteligente para CIIU.")
+        sugerencia = cls.generar_sugerencia_ciiu_mock(nombre, sector, descripcion_actividad, candidatos)
+        return {"sugerencia": sugerencia, "fuente": "Mock Inteligente v2.0"}
 
     @classmethod
     def describir_codigo_ciiu(cls, nombre, sector, registro_principal, registros_secundarios):
-        api_key = cls.get_api_key()
+        prompt = (
+            "Actúa como un experto en salud y seguridad en el trabajo (SST) y normatividad laboral de Colombia (Decreto 768 / CIIU Rev. 4 A.C.).\n"
+            "Tu objetivo es generar una descripción narrativa detallada y contextualizada para las actividades económicas de la empresa, relacionándolas con su operación y el sistema de gestión de seguridad y salud en el trabajo (SG-SST).\n\n"
+            "Empresa:\n"
+            f"- Nombre: \"{nombre}\"\n"
+            f"- Sector: \"{sector or 'General'}\"\n\n"
+            "Actividad Principal:\n"
+            f"- Código: \"{registro_principal['codigo_768']}\" - \"{registro_principal['descripcion']}\" (Riesgo Clase {registro_principal['clase_riesgo']})\n"
+            f"- Grupo: \"{registro_principal['grupo']}\"\n"
+            f"- División: \"{registro_principal['division']}\"\n\n"
+            "Actividades Secundarias:\n"
+            f"{chr(10).join(['- Código: \"' + r['codigo_768'] + '\" - \"' + r['descripcion'] + '\" (Riesgo Clase ' + str(r['clase_riesgo']) + ')' for r in registros_secundarios]) or 'Ninguna'}\n\n"
+            "Requisitos de la descripción:\n"
+            f"Genera un análisis estructurado explicando el alcance de estas actividades en la empresa, los riesgos generales asociados (con base en la clase de riesgo de cada código) y consideraciones clave para el SG-SST (ej. exámenes médicos ocupacionales, controles principales, equipos de protección).\n"
+            "La respuesta DEBE ser EXCLUSIVAMENTE un objeto JSON válido, con la siguiente estructura exacta:\n"
+            "{\n"
+            "  \"actividad_principal\": {\n"
+            f"    \"codigo_768\": \"{registro_principal['codigo_768']}\",\n"
+            f"    \"descripcion_contextualizada\": \"Análisis narrativo fluido y profesional (de 2 a 3 párrafos) conectando este código con las operaciones cotidianas de {nombre}, los principales factores de riesgo según la clase {registro_principal['clase_riesgo']} y el enfoque de prevención de SST.\"\n"
+            "  },\n"
+            "  \"actividades_secundarias\": [\n"
+            f"    {','.join(['{\n      \"codigo_768\": \"' + r['codigo_768'] + '\",\n      \"descripcion_contextualizada\": \"Análisis contextualizado breve (1 párrafo) de cómo esta actividad complementa la principal y sus implicaciones preventivas.\"\n    }' for r in registros_secundarios])}\n"
+            "  ]\n"
+            "}"
+        )
 
-        if not api_key:
-            logger.info("[IAContextoService] ANTHROPIC_API_KEY no detectada. Usando Mock Inteligente para descripción CIIU.")
-            descripcion = cls.generar_descripcion_ciiu_mock(nombre, sector, registro_principal, registros_secundarios)
-            return {"descripcion": descripcion, "fuente": "Mock Inteligente v2.0"}
+        data, fuente = cls._call_ia(prompt, temperature=0.4)
+        if data:
+            try:
+                enriched_principal = {
+                    **registro_principal,
+                    "descripcion_contextualizada": data["actividad_principal"]["descripcion_contextualizada"],
+                }
+                enriched_secundarias = []
+                for sec in data.get("actividades_secundarias", []):
+                    sec_code = sec["codigo_768"]
+                    matched_sec = next((r for r in registros_secundarios if r["codigo_768"] == sec_code), None)
+                    if matched_sec:
+                        enriched_secundarias.append({
+                            **matched_sec,
+                            "descripcion_contextualizada": sec["descripcion_contextualizada"],
+                        })
+                return {
+                    "descripcion": {
+                        "actividad_principal": enriched_principal,
+                        "actividades_secundarias": enriched_secundarias,
+                    },
+                    "fuente": fuente,
+                }
+            except Exception as e:
+                logger.error(f"[IAContextoService] Error procesando descripción CIIU de IA: {e}")
 
-        try:
-            from anthropic import Anthropic
-            client = Anthropic(api_key=api_key, timeout=30.0, max_retries=1)
-
-            prompt = (
-                "Actúa como un experto en salud y seguridad en el trabajo (SST) y normatividad laboral de Colombia (Decreto 768 / CIIU Rev. 4 A.C.).\n"
-                "Tu objetivo es generar una descripción narrativa detallada y contextualizada para las actividades económicas de la empresa, relacionándolas con su operación y el sistema de gestión de seguridad y salud en el trabajo (SG-SST).\n\n"
-                "Empresa:\n"
-                f"- Nombre: \"{nombre}\"\n"
-                f"- Sector: \"{sector or 'General'}\"\n\n"
-                "Actividad Principal:\n"
-                f"- Código: \"{registro_principal['codigo_768']}\" - \"{registro_principal['descripcion']}\" (Riesgo Clase {registro_principal['clase_riesgo']})\n"
-                f"- Grupo: \"{registro_principal['grupo']}\"\n"
-                f"- División: \"{registro_principal['division']}\"\n\n"
-                "Actividades Secundarias:\n"
-                f"{chr(10).join(['- Código: \"' + r['codigo_768'] + '\" - \"' + r['descripcion'] + '\" (Riesgo Clase ' + str(r['clase_riesgo']) + ')' for r in registros_secundarios]) or 'Ninguna'}\n\n"
-                "Requisitos de la descripción:\n"
-                f"Genera un análisis estructurado explicando el alcance de estas actividades en la empresa, los riesgos generales asociados (con base en la clase de riesgo de cada código) y consideraciones clave para el SG-SST (ej. exámenes médicos ocupacionales, controles principales, equipos de protección).\n"
-                "La respuesta DEBE ser EXCLUSIVAMENTE un objeto JSON válido, con la siguiente estructura exacta:\n"
-                "{\n"
-                "  \"actividad_principal\": {\n"
-                f"    \"codigo_768\": \"{registro_principal['codigo_768']}\",\n"
-                f"    \"descripcion_contextualizada\": \"Análisis narrativo fluido y profesional (de 2 a 3 párrafos) conectando este código con las operaciones cotidianas de {nombre}, los principales factores de riesgo según la clase {registro_principal['clase_riesgo']} y el enfoque de prevención de SST.\"\n"
-                "  },\n"
-                "  \"actividades_secundarias\": [\n"
-                f"    {','.join(['{\n      \"codigo_768\": \"' + r['codigo_768'] + '\",\n      \"descripcion_contextualizada\": \"Análisis contextualizado breve (1 párrafo) de cómo esta actividad complementa la principal y sus implicaciones preventivas.\"\n    }' for r in registros_secundarios])}\n"
-                "  ]\n"
-                "}"
-            )
-
-            response = client.messages.create(
-                model="claude-3-5-sonnet-20241022",
-                max_tokens=1200,
-                temperature=0.4,
-                messages=[{"role": "user", "content": prompt}]
-            )
-
-            text = response.content[0].text if response.content else ""
-            cleaned = text.strip()[text.find("{"):text.rfind("}") + 1]
-            parsed = json.loads(cleaned)
-
-            enriched_principal = {
-                **registro_principal,
-                "descripcion_contextualizada": parsed["actividad_principal"]["descripcion_contextualizada"]
-            }
-
-            enriched_secundarias = []
-            for sec in parsed.get("actividades_secundarias", []):
-                sec_code = sec["codigo_768"]
-                matched_sec = next((r for r in registros_secundarios if r["codigo_768"] == sec_code), None)
-                if matched_sec:
-                    enriched_secundarias.append({
-                        **matched_sec,
-                        "descripcion_contextualizada": sec["descripcion_contextualizada"]
-                    })
-
-            return {
-                "descripcion": {
-                    "actividad_principal": enriched_principal,
-                    "actividades_secundarias": enriched_secundarias
-                },
-                "fuente": "Anthropic Claude"
-            }
-        except Exception as e:
-            logger.error(f"[IAContextoService] Error llamando a Anthropic para descripción CIIU: {e}")
-            descripcion = cls.generar_descripcion_ciiu_mock(nombre, sector, registro_principal, registros_secundarios)
-            return {"descripcion": descripcion, "fuente": "Mock Inteligente v2.0"}
+        logger.info("[IAContextoService] Sin proveedor de IA disponible; usando Mock Inteligente para descripción CIIU.")
+        descripcion = cls.generar_descripcion_ciiu_mock(nombre, sector, registro_principal, registros_secundarios)
+        return {"descripcion": descripcion, "fuente": "Mock Inteligente v2.0"}
 
     # --- MOCKS INTELIGENTES ---
 

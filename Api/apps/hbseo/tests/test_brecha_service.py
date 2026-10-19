@@ -42,7 +42,7 @@ def _crear_trabajador(empresa, nombre="Juan Pérez", documento="1000000001"):
 
 
 @override_settings(
-    ANTHROPIC_API_KEY="",
+    GEMINI_API_KEY="",
     CELERY_TASK_ALWAYS_EAGER=True,
     CACHES={"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}},
 )
@@ -310,7 +310,7 @@ class RegistrarBrechaTests(TestCase):
 
 
 @override_settings(
-    ANTHROPIC_API_KEY="",
+    GEMINI_API_KEY="",
     CELERY_TASK_ALWAYS_EAGER=True,
     CACHES={"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}},
 )

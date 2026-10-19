@@ -373,8 +373,15 @@ CELERY_BEAT_SCHEDULE = {
     },
 }
 
-# ANTHROPIC SDK API KEY
-ANTHROPIC_API_KEY = env("ANTHROPIC_API_KEY", default="")
+# ── Servicios de IA (Gemini + fallback local opcional) ────────────────────
+GEMINI_API_KEY = env("GEMINI_API_KEY", default="")
+GEMINI_MODEL = env("GEMINI_MODEL", default="gemini-3.8-flash")
+GEMINI_TIMEOUT = env.int("GEMINI_TIMEOUT", default=30)
+# Fallback local con Ollama (desactivado por defecto por recursos del servidor)
+OLLAMA_ENABLED = env.bool("OLLAMA_ENABLED", default=False)
+OLLAMA_URL = env("OLLAMA_URL", default="http://host.docker.internal:11434")
+OLLAMA_MODEL = env("OLLAMA_MODEL", default="qwen2.5:0.5b")
+OLLAMA_TIMEOUT = env.int("OLLAMA_TIMEOUT", default=120)
 
 # ── Validaciones de arranque para Ambiente UAT (§3) ───────────────────────
 if ENVIRONMENT == "uat":

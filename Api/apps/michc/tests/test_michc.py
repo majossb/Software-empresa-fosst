@@ -73,7 +73,7 @@ def _crear_trabajador(empresa, perfil=None, nombre="Julián Gómez", documento="
 
 
 @override_settings(
-    ANTHROPIC_API_KEY="",
+    GEMINI_API_KEY="",
     CELERY_TASK_ALWAYS_EAGER=True,
     CACHES={"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}},
 )

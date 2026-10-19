@@ -261,8 +261,20 @@ export function AppShell({ sections, topbarRight, children, breadcrumb }: AppShe
   const location = useLocation()
   const [sidebarOpen, setSidebarOpen] = useState(false)
 
-  // Track which sections are expanded (by index)
-  const [expandedSections, setExpandedSections] = useState<Set<number>>(new Set())
+  // Track which sections are expanded (by index), persisted across reloads
+  const [expandedSections, setExpandedSections] = useState<Set<number>>(() => {
+    try {
+      const raw = localStorage.getItem('nav_expanded_sections')
+      if (raw) return new Set<number>(JSON.parse(raw))
+    } catch { /* ignore */ }
+    return new Set<number>()
+  })
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('nav_expanded_sections', JSON.stringify(Array.from(expandedSections)))
+    } catch { /* ignore */ }
+  }, [expandedSections])
 
   // Auto-expand the section containing the current route
   const findActiveSectionIndex = useCallback(() => {
@@ -282,8 +294,9 @@ export function AppShell({ sections, topbarRight, children, breadcrumb }: AppShe
     const activeIdx = findActiveSectionIndex()
     if (activeIdx >= 0) {
       setExpandedSections(prev => {
-        // Only expand the active section, collapse others
-        const next = new Set<number>()
+        // Expandir la sección activa SIN cerrar las demás
+        if (prev.has(activeIdx)) return prev
+        const next = new Set(prev)
         next.add(activeIdx)
         return next
       })

@@ -1,7 +1,6 @@
 import json
 import uuid
 import datetime
-import anthropic
 
 from django.db import transaction
 from django.db.models import Count, Q
@@ -460,22 +459,35 @@ class GenerateIAFieldView(APIView):
         else:
             return Response({"error": "Campo no soportado"}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Usar API Key de Anthropic
-        api_key = getattr(settings, 'ANTHROPIC_API_KEY', None)
-        client = anthropic.Anthropic(api_key=api_key) if api_key else anthropic.Anthropic()
-        
+        # Llamada a Gemini (Google AI Studio) en modo no-streaming; se emite por SSE.
+        api_key = getattr(settings, 'GEMINI_API_KEY', '')
+        model = getattr(settings, 'GEMINI_MODEL', 'gemini-3.8-flash')
+
         def event_stream():
             try:
-                with client.messages.stream(
-                    max_tokens=1024,
-                    messages=[{"role": "user", "content": prompt}],
-                    model="claude-3-5-sonnet-20241022",
-                ) as stream:
-                    for text in stream.text_stream:
-                        yield f"data: {text}\n\n"
+                if not api_key:
+                    yield "data: " + json.dumps({"error": "Servicio de IA no configurado."}) + "\n\n"
+                    yield "data: [DONE]\n\n"
+                    return
+
+                import httpx
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+                payload = {
+                    "contents": [{"parts": [{"text": prompt}]}],
+                    "generationConfig": {"temperature": 0.6},
+                }
+                with httpx.Client(timeout=getattr(settings, 'GEMINI_TIMEOUT', 30)) as client:
+                    resp = client.post(url, params={"key": api_key}, json=payload)
+                    resp.raise_for_status()
+                    data = resp.json()
+
+                text = data["candidates"][0]["content"]["parts"][0]["text"] or ""
+                for i in range(0, len(text), 60):
+                    yield "data: " + json.dumps({"text": text[i:i + 60]}) + "\n\n"
                 yield "data: [DONE]\n\n"
             except Exception as e:
-                yield f"data: {{\"error\": \"{str(e)}\"}}\n\n"
+                yield "data: " + json.dumps({"error": str(e)}) + "\n\n"
+                yield "data: [DONE]\n\n"
 
         return StreamingHttpResponse(event_stream(), content_type='text/event-stream')
 

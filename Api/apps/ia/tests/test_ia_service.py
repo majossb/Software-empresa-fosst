@@ -17,7 +17,7 @@ from apps.ia.prompts import PROMPT_REGISTRY
 
 
 @override_settings(
-    ANTHROPIC_API_KEY="",
+    GEMINI_API_KEY="",
     CACHES={"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}},
 )
 class IAInterpretacionServiceMockTests(TestCase):
