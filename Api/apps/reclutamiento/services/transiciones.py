@@ -131,7 +131,13 @@ def validar_preseleccion(postulacion: Postulacion, contexto: Optional[Dict[str, 
             req_id = str(req)
             nombre_req = str(req)
 
-        calificacion = calificacion_requisitos.get(req_id, False)
+        calificacion = calificacion_requisitos.get(req_id)
+        if calificacion is None:
+            texto = nombre_req.lower()
+            if "experiencia" in texto:
+                calificacion = calificacion_requisitos.get("experiencia_requerida")
+            elif any(clave in texto for clave in ("formaci", "educaci", "titulo", "título")):
+                calificacion = calificacion_requisitos.get("formacion_academica")
         cumplido = calificacion.get("cumple", False) if isinstance(calificacion, dict) else bool(calificacion)
         if not cumplido:
             faltantes.append(nombre_req)

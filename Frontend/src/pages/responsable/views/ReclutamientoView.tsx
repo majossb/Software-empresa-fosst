@@ -14,12 +14,13 @@ import {
   FuenteReclutamiento,
   IndicadorFuente,
   InformeGerencial,
+  CandidatoDocumento,
 } from '@/types/reclutamiento.types'
 import {
   Users, Briefcase, GitPullRequest, Search, Plus, Filter,
   CheckCircle2, Clock, XCircle, AlertTriangle, Eye, ShieldCheck,
   Award, FileCheck, Phone, Mail, MapPin, Calendar, ExternalLink,
-  ChevronRight, ArrowRight, UserCheck, X, RefreshCw,
+  ChevronRight, ArrowRight, UserCheck, X,
   Tag, TrendingUp, Pencil, FileText, Download, History, ListChecks, Sparkles
 } from 'lucide-react'
 
@@ -120,7 +121,7 @@ export default function ReclutamientoView() {
 
   // Modales de Acción de Estado
   const [actionModal, setActionModal] = useState<{
-    type: 'preseleccionar' | 'entrevista' | 'evaluacion' | 'validacion' | 'seleccionar' | 'no_seleccionar' | 'cerrar' | 'reabrir' | 'postular' | null
+    type: 'preseleccionar' | 'entrevista' | 'evaluacion' | 'validacion' | 'seleccionar' | 'no_seleccionar' | 'cerrar' | 'postular' | null
     postulacion?: PostulacionListItem
   }>({ type: null })
 
@@ -159,12 +160,12 @@ export default function ReclutamientoView() {
     estado: 'verificado_conforme',
     detalles_verificacion: 'Sin antecedentes desfavorables',
   })
+  const [validacionDocs, setValidacionDocs] = useState<CandidatoDocumento[]>([])
+  const [validacionChecklist, setValidacionChecklist] = useState<Record<string, boolean>>({})
+  const [loadingValidacionDocs, setLoadingValidacionDocs] = useState(false)
   const [cerrarForm, setCerrarForm] = useState({
     nuevo_estado: 'no_seleccionado',
     motivo: '',
-  })
-  const [reabrirForm, setReabrirForm] = useState({
-    justificacion: '',
   })
   const [postularCandidatoId, setPostularCandidatoId] = useState('')
 
@@ -296,10 +297,49 @@ export default function ReclutamientoView() {
     }
   }
 
+  const abrirValidacion = async (post: PostulacionListItem) => {
+    setActionModal({ type: 'validacion', postulacion: post })
+    setValidacionDocs([])
+    setValidacionChecklist({})
+    setValidacionForm(p => ({ ...p, detalles_verificacion: '' }))
+    setLoadingValidacionDocs(true)
+    try {
+      const detalle = await reclutamientoService.getPostulacionById(post.id)
+      const docs = detalle.documentos || []
+      setValidacionDocs(docs)
+      const requeridos = post.documentos_requeridos || detalle.documentos_requeridos || []
+      const checklist: Record<string, boolean> = {}
+      for (const tipo of requeridos) {
+        checklist[tipo] = docs.some((d) => d.tipo_documento === tipo)
+      }
+      setValidacionChecklist(checklist)
+    } catch (err: any) {
+      alert(errMsg(err, 'No se pudieron cargar los documentos de la postulación.'))
+    } finally {
+      setLoadingValidacionDocs(false)
+    }
+  }
+
   const handleRegistrarValidacion = async () => {
     if (!actionModal.postulacion) return
+    const requeridos = actionModal.postulacion.documentos_requeridos || []
+    const faltantes = requeridos.filter((tipo) => !validacionDocs.some((d) => d.tipo_documento === tipo))
+    const sinValidar = requeridos.filter((tipo) => validacionChecklist[tipo] === false)
+    const estado = faltantes.length || sinValidar.length ? 'verificado_con_inconsistencias' : 'verificado_conforme'
+    const resumen = requeridos
+      .map((tipo) => {
+        const presente = validacionDocs.some((d) => d.tipo_documento === tipo)
+        const validado = !!validacionChecklist[tipo]
+        return `${docLabel(tipo)}: ${presente ? (validado ? 'conforme' : 'sin validar') : 'faltante'}`
+      })
+      .join('; ')
     try {
-      await reclutamientoService.registrarValidacionPostulacion(actionModal.postulacion.id, validacionForm)
+      await reclutamientoService.registrarValidacionPostulacion(actionModal.postulacion.id, {
+        tipo_verificacion: 'otro',
+        entidad_o_contacto: 'Revisión documental interna',
+        estado,
+        detalles_verificacion: [resumen, validacionForm.detalles_verificacion].filter(Boolean).join('. '),
+      })
       setActionModal({ type: null })
       if (selectedProceso) cargarProceso(selectedProceso.id)
       if (selectedPostulacion) verDetallePostulacion(selectedPostulacion.id)
@@ -341,22 +381,6 @@ export default function ReclutamientoView() {
       if (selectedPostulacion) verDetallePostulacion(selectedPostulacion.id)
     } catch (err: any) {
       alert(errMsg(err, 'Error al cerrar postulación'))
-    }
-  }
-
-  const handleReabrir = async () => {
-    if (!actionModal.postulacion) return
-    if (!reabrirForm.justificacion.trim()) {
-      alert('La justificación de reapertura es obligatoria (RN-R07/RN-R09).')
-      return
-    }
-    try {
-      await reclutamientoService.reabrirPostulacion(actionModal.postulacion.id, reabrirForm)
-      setActionModal({ type: null })
-      if (selectedProceso) cargarProceso(selectedProceso.id)
-      if (selectedPostulacion) verDetallePostulacion(selectedPostulacion.id)
-    } catch (err: any) {
-      alert(errMsg(err, 'Error al reabrir postulación'))
     }
   }
 
@@ -736,7 +760,7 @@ export default function ReclutamientoView() {
   }
 
   // ── Render Semáforo de Etapas ─────────────────────────────────
-  const renderSemaforoBadge = (etapa: 'entrevista' | 'evaluacion' | 'validacion_documental', semaforo: any) => {
+  const renderSemaforoBadge = (etapa: 'entrevista' | 'evaluacion' | 'validacion_documental', semaforo: any, onClick?: () => void) => {
     const info = semaforo?.[etapa]
     if (!info) return null
 
@@ -771,7 +795,14 @@ export default function ReclutamientoView() {
       )
     }
     return (
-      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs bg-slate-100 text-slate-600 border border-slate-200">
+      <span
+        onClick={onClick}
+        role={onClick ? 'button' : undefined}
+        title={onClick ? 'Registrar validación documental' : undefined}
+        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs bg-slate-100 text-slate-600 border border-slate-200 ${
+          onClick ? 'cursor-pointer hover:bg-primary-50 hover:border-primary-200' : ''
+        }`}
+      >
         <span className="w-1.5 h-1.5 rounded-full bg-slate-400" />
         {labels[etapa]} Pendiente
       </span>
@@ -1084,7 +1115,11 @@ export default function ReclutamientoView() {
                             <div className="flex items-center justify-center gap-2 flex-wrap">
                               {renderSemaforoBadge('entrevista', post.semaforo_etapas)}
                               {renderSemaforoBadge('evaluacion', post.semaforo_etapas)}
-                              {renderSemaforoBadge('validacion_documental', post.semaforo_etapas)}
+                              {renderSemaforoBadge(
+                                'validacion_documental',
+                                post.semaforo_etapas,
+                                post.es_activa ? () => abrirValidacion(post) : undefined,
+                              )}
                             </div>
                           </td>
 
@@ -1159,7 +1194,7 @@ export default function ReclutamientoView() {
                                   )}
                                   {selectedProceso?.requiere_validacion_documental && post.semaforo_etapas?.validacion_documental?.estado !== 'completada' && (
                                     <button
-                                      onClick={() => setActionModal({ type: 'validacion', postulacion: post })}
+                                      onClick={() => abrirValidacion(post)}
                                       className="px-2 py-1 text-xs rounded bg-primary-50 text-primary-500 hover:bg-primary-100 font-medium"
                                     >
                                       + Validación
@@ -1202,17 +1237,6 @@ export default function ReclutamientoView() {
                                   title="Cerrar por falta de documentos y notificar"
                                 >
                                   Falta docs
-                                </button>
-                              )}
-
-                              {post.estado === 'no_seleccionado' && (
-                                <button
-                                  onClick={() => setActionModal({ type: 'reabrir', postulacion: post })}
-                                  className="px-2 py-1 text-xs rounded bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium"
-                                  title="Reapertura Excepcional"
-                                >
-                                  <RefreshCw className="w-3.5 h-3.5 inline mr-1" />
-                                  Reabrir
                                 </button>
                               )}
 
@@ -2197,55 +2221,96 @@ export default function ReclutamientoView() {
       {/* MODAL: REGISTRAR VALIDACIÓN DOCUMENTAL                   */}
       {/* ───────────────────────────────────────────────────────── */}
       {actionModal.type === 'validacion' && actionModal.postulacion && (
-        <Modal open={true} onClose={() => setActionModal({ type: null })} title="Validación Documental / Antecedentes" maxWidth="28rem">
-          <div className="space-y-4">
+        <Modal open={true} onClose={() => setActionModal({ type: null })} title="Validación Documental" maxWidth="40rem">
+          <div className="space-y-4 text-xs">
+            <div>
+              <h4 className="font-bold text-slate-800 mb-2">Documentos cargados</h4>
+              {loadingValidacionDocs ? (
+                <p className="text-slate-400">Cargando documentos...</p>
+              ) : validacionDocs.length ? (
+                <ul className="space-y-1.5">
+                  {validacionDocs.map((d) => (
+                    <li key={d.id} className="flex items-center justify-between bg-slate-50 rounded-lg px-3 py-2">
+                      <span className="text-slate-700">
+                        <b>{d.tipo_documento_display}</b>: {d.nombre_descriptivo || d.archivo_nombre || 'Documento'}
+                      </span>
+                      {d.archivo_url && (
+                        <button
+                          type="button"
+                          onClick={() => setPreviewDoc({
+                            url: d.archivo_url!,
+                            nombre: d.nombre_descriptivo || d.archivo_nombre || 'Documento',
+                            tipo: d.tipo_documento_display,
+                          })}
+                          className="text-primary-500 hover:underline flex items-center gap-1"
+                        >
+                          Ver <ExternalLink className="w-3 h-3" />
+                        </button>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-slate-400">Sin documentos cargados.</p>
+              )}
+            </div>
 
-            <div className="space-y-3 text-xs">
-              <div>
-                <label className="block text-slate-700 font-medium mb-1">Tipo de Verificación:</label>
-                <select
-                  value={validacionForm.tipo_verificacion}
-                  onChange={(e) => setValidacionForm(p => ({ ...p, tipo_verificacion: e.target.value }))}
-                  className="w-full p-2 border rounded-lg"
-                >
-                  <option value="antecedentes">Antecedentes Judiciales / Procuraduría</option>
-                  <option value="referencia_laboral">Referencia Laboral</option>
-                  <option value="titulo_academico">Título Académico</option>
-                  <option value="licencia_sst">Licencia SST</option>
-                  <option value="certificacion_alturas">Certificado Trabajo en Alturas</option>
-                </select>
-              </div>
+            <div>
+              <h4 className="font-bold text-slate-800 mb-2">Checklist de documentos requeridos</h4>
+              {(actionModal.postulacion.documentos_requeridos || []).length ? (
+                <div className="space-y-2">
+                  {(actionModal.postulacion.documentos_requeridos || []).map((tipo) => {
+                    const presente = validacionDocs.some((d) => d.tipo_documento === tipo)
+                    const marcado = !!validacionChecklist[tipo]
+                    return (
+                      <label
+                        key={tipo}
+                        className={`flex items-center justify-between rounded-lg border px-3 py-2 ${
+                          presente ? 'border-slate-200 bg-white' : 'border-rose-200 bg-rose-50'
+                        } ${presente ? 'cursor-pointer' : 'cursor-not-allowed'}`}
+                      >
+                        <span className="flex items-center gap-2">
+                          <input
+                            type="checkbox"
+                            checked={marcado}
+                            disabled={!presente}
+                            onChange={(e) => setValidacionChecklist((prev) => ({ ...prev, [tipo]: e.target.checked }))}
+                            className="rounded text-primary-500"
+                          />
+                          <span className="text-slate-700">{docLabel(tipo)}</span>
+                        </span>
+                        <span className={`text-[10px] font-bold uppercase ${presente ? 'text-emerald-600' : 'text-rose-600'}`}>
+                          {presente ? (marcado ? 'Validado' : 'Cargado') : 'Faltante'}
+                        </span>
+                      </label>
+                    )
+                  })}
+                </div>
+              ) : (
+                <p className="text-slate-400">El proceso no tiene documentos requeridos configurados.</p>
+              )}
+              <p className="text-[11px] text-slate-400 mt-2">
+                Marca los documentos revisados y conformes. Los faltantes o sin marcar se registran como inconsistencia.
+              </p>
+            </div>
 
-              <div>
-                <label className="block text-slate-700 font-medium mb-1">Entidad o Contacto:</label>
-                <input
-                  type="text"
-                  value={validacionForm.entidad_o_contacto}
-                  onChange={(e) => setValidacionForm(p => ({ ...p, entidad_o_contacto: e.target.value }))}
-                  className="w-full p-2 border rounded-lg"
-                />
-              </div>
-
-              <div>
-                <label className="block text-slate-700 font-medium mb-1">Estado de la Verificación:</label>
-                <select
-                  value={validacionForm.estado}
-                  onChange={(e) => setValidacionForm(p => ({ ...p, estado: e.target.value }))}
-                  className="w-full p-2 border rounded-lg"
-                >
-                  <option value="verificado_conforme">Verificado Conforme / Válido</option>
-                  <option value="verificado_con_inconsistencias">Con Inconsistencias</option>
-                  <option value="no_pudo_verificarse">No Pudo Verificarse</option>
-                </select>
-              </div>
+            <div>
+              <label className="block text-slate-700 font-medium mb-1">Observaciones (opcional):</label>
+              <textarea
+                rows={2}
+                className="w-full p-2 border rounded-lg"
+                value={validacionForm.detalles_verificacion}
+                onChange={(e) => setValidacionForm(p => ({ ...p, detalles_verificacion: e.target.value }))}
+                placeholder="Observaciones de la revisión documental..."
+              />
             </div>
 
             <div className="flex justify-end gap-2 pt-2">
               <Button variant="secondary" className="text-xs" onClick={() => setActionModal({ type: null })}>
                 Cancelar
               </Button>
-              <Button variant="primary" className="text-xs" onClick={handleRegistrarValidacion}>
-                Confirmar Verificación
+              <Button variant="primary" className="text-xs" onClick={handleRegistrarValidacion} disabled={loadingValidacionDocs}>
+                Registrar validación
               </Button>
             </div>
           </div>

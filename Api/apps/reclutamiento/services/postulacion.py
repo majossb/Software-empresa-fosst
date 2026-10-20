@@ -147,6 +147,7 @@ def registrar_postulacion(
 
 
 @transaction.atomic
+@transaction.atomic
 def preseleccionar_candidato(
     postulacion: Postulacion,
     calificacion_requisitos: Dict[str, Any],
