@@ -60,6 +60,13 @@ DOCS_REQUERIDOS = [
     CandidatoDocumento.TipoDocumento.CEDULA,
     CandidatoDocumento.TipoDocumento.CERTIFICACION_LABORAL,
 ]
+TITULO_VACANTE_TIC = "[PRUEBAS] Ingeniero de Soporte TI"
+PERFIL_VACANTE_TIC = "PC-2026-0210"
+DOCS_REQUERIDOS_TIC = [
+    CandidatoDocumento.TipoDocumento.HOJA_DE_VIDA,
+    CandidatoDocumento.TipoDocumento.CEDULA,
+    CandidatoDocumento.TipoDocumento.CERTIFICACION_ACADEMICA,
+]
 DOC_LABELS = dict(CandidatoDocumento.TipoDocumento.choices)
 
 PERFILES = [
@@ -589,12 +596,65 @@ CANDIDATOS = [
 ]
 
 
+NOMBRES_TIC = [
+    ("Santiago", "Gómez", "Popayán", "Cauca", "universitario", "Ingeniero de Sistemas", "4.0"),
+    ("Valentina", "Ríos", "Cali", "Valle del Cauca", "tecnologo", "Tecnóloga en Sistemas", "2.5"),
+    ("Andrés Felipe", "Torres", "Bogotá", "Cundinamarca", "universitario", "Ingeniero de Software", "3.0"),
+    ("Camila", "Herrera", "Medellín", "Antioquia", "especializacion", "Especialista en Seguridad Informática", "6.0"),
+    ("Daniel", "Ospina", "Pasto", "Nariño", "universitario", "Ingeniero de Sistemas", "2.0"),
+    ("Laura", "Cárdenas", "Manizales", "Caldas", "tecnico", "Técnica en Soporte TI", "1.5"),
+    ("Sebastián", "Mora", "Pereira", "Risaralda", "universitario", "Ingeniero de Sistemas", "5.0"),
+    ("Natalia", "Vargas", "Tunja", "Boyacá", "tecnologo", "Tecnóloga en Redes", "3.0"),
+    ("Julián", "Ramírez", "Neiva", "Huila", "universitario", "Ingeniero de Software", "2.0"),
+    ("Diana", "Salazar", "Villavicencio", "Meta", "universitario", "Ingeniera de Sistemas", "4.0"),
+    ("Ricardo", "Peña", "Popayán", "Cauca", "tecnologo", "Tecnólogo en Sistemas", "2.0"),
+    ("Mónica", "Castro", "Cali", "Valle del Cauca", "universitario", "Ingeniera de Sistemas", "3.5"),
+    ("Esteban", "Giraldo", "Bogotá", "Cundinamarca", "especializacion", "Especialista en Ciberseguridad", "7.0"),
+    ("Luisa", "Mora", "Medellín", "Antioquia", "universitario", "Ingeniera de Software", "2.0"),
+    ("Diego", "Cruz", "Pasto", "Nariño", "tecnologo", "Tecnólogo en Soporte TI", "1.5"),
+    ("Sara", "Cardona", "Manizales", "Caldas", "universitario", "Ingeniera de Sistemas", "4.0"),
+    ("Juan", "Restrepo", "Pereira", "Risaralda", "tecnico", "Técnico en Redes", "2.0"),
+    ("Paola", "Cárdenas", "Tunja", "Boyacá", "universitario", "Ingeniera de Sistemas", "3.0"),
+    ("Felipe", "Mejía", "Neiva", "Huila", "universitario", "Ingeniero de Software", "5.0"),
+    ("Andrea", "Rojas", "Villavicencio", "Meta", "tecnologo", "Tecnóloga en Sistemas", "2.0"),
+]
+
+CANDIDATOS_TIC = []
+for _i, (_nombres, _apellidos, _ciudad, _departamento, _nivel, _titulo, _experiencia) in enumerate(NOMBRES_TIC):
+    CANDIDATOS_TIC.append({
+        "documento": f"99000010{_i + 1:02d}",
+        "nombres": _nombres,
+        "apellidos": _apellidos,
+        "email": f"tic{_i + 1:02d}@fosst-test.com",
+        "telefono": f"301200{_i + 1:04d}",
+        "ciudad": _ciudad,
+        "departamento": _departamento,
+        "nivel": _nivel,
+        "titulo": _titulo,
+        "experiencia": _experiencia,
+        "competencias": [
+            ["Soporte técnico", "Redes", "Windows Server"],
+            ["Soporte técnico", "Ciberseguridad", "Linux"],
+            ["Redes", "Soporte técnico", "Office 365"],
+            ["Ciberseguridad", "Redes", "Soporte técnico"],
+        ][_i % 4],
+        "fuente": ["LinkedIn", "Computrabajo", "Portal Web", "Referido", "Servicio Público de Empleo"][_i % 5],
+        "estado": Postulacion.Estado.POSTULADO,
+        "docs": [3, 2, 1, 0][_i % 4],
+        "score": None,
+        "etapas": [],
+        "motivo": "",
+        "dias": _i + 1,
+    })
+
+
 class Command(BaseCommand):
-    help = "Siembra 10 perfiles, 1 vacante y 20 postulaciones de prueba para Reclutamiento."
+    help = "Siembra 10 perfiles, vacantes y postulaciones de prueba para Reclutamiento."
 
     def add_arguments(self, parser):
         parser.add_argument("--nit", default="900000000", help="NIT de la empresa destino.")
         parser.add_argument("--reset", action="store_true", help="Elimina los datos de prueba previos antes de sembrar.")
+        parser.add_argument("--tic", action="store_true", help="Crea la vacante TIC y sus 20 postulados.")
 
     def handle(self, *args, **options):
         empresa = Empresa.objects.filter(nit=options["nit"]).first()
@@ -612,13 +672,72 @@ class Command(BaseCommand):
                 self._reset(empresa)
                 self.stdout.write(self.style.WARNING("Datos de prueba anteriores eliminados."))
             perfiles = self._crear_perfiles(empresa, sede)
-            vacante, proceso = self._crear_vacante(empresa, perfiles[0], sede, responsable)
-            total = self._crear_postulaciones(empresa, vacante, proceso, responsable)
-            self._resumen(vacante, proceso, len(perfiles), total)
+            if options["tic"]:
+                perfil = next((p for p in perfiles if p.codigo == PERFIL_VACANTE_TIC), None)
+                if not perfil:
+                    raise CommandError(f"No se encontró el perfil {PERFIL_VACANTE_TIC}.")
+                vacante, proceso = self._crear_vacante(
+                    empresa, perfil, sede, responsable,
+                    titulo=TITULO_VACANTE_TIC,
+                    descripcion=(
+                        "Buscamos un Ingeniero de Soporte TI para brindar soporte técnico, "
+                        "administrar la infraestructura, la red y los respaldos, garantizando "
+                        "disponibilidad, seguridad y continuidad del servicio."
+                    ),
+                    documentos=DOCS_REQUERIDOS_TIC,
+                    requisitos=[
+                        "Formación mínima: Profesional en Ingeniería de Sistemas, Software o afines.",
+                        "Experiencia mínima: Mínimo 2 años en soporte TI e infraestructura.",
+                    ],
+                    requisitos_deseables=[
+                        "Certificación en redes o ciberseguridad.",
+                        "Experiencia con Windows Server, Linux y Office 365.",
+                    ],
+                    cupos=3,
+                    seleccionados=0,
+                    salario_min=Decimal("3000000"),
+                    salario_max=Decimal("4500000"),
+                )
+                total = self._crear_postulaciones(
+                    empresa, vacante, proceso, responsable,
+                    CANDIDATOS_TIC, DOCS_REQUERIDOS_TIC,
+                    area="Tecnología", cargo="Ingeniero de Soporte TI",
+                )
+                self._resumen(vacante, proceso, len(perfiles), total, DOCS_REQUERIDOS_TIC)
+            else:
+                vacante, proceso = self._crear_vacante(
+                    empresa, perfiles[0], sede, responsable,
+                    titulo=TITULO_VACANTE,
+                    descripcion=(
+                        "Buscamos un Analista de Gestión Humana para liderar los procesos de "
+                        "reclutamiento, selección, contratación, formación y bienestar del talento, "
+                        "asegurando el cumplimiento de la normatividad laboral y el fortalecimiento "
+                        "del clima organizacional."
+                    ),
+                    documentos=DOCS_REQUERIDOS,
+                    requisitos=[
+                        "Profesional en Administración, Psicología, Ingeniería Industrial o afines.",
+                        "Mínimo 1 año de experiencia en gestión humana o talento humano.",
+                    ],
+                    requisitos_deseables=[
+                        "Especialización en Gestión Humana o SST.",
+                        "Manejo de Excel intermedio.",
+                    ],
+                    cupos=3,
+                    seleccionados=1,
+                    salario_min=Decimal("2500000"),
+                    salario_max=Decimal("3500000"),
+                )
+                total = self._crear_postulaciones(
+                    empresa, vacante, proceso, responsable,
+                    CANDIDATOS, DOCS_REQUERIDOS,
+                    area="Gestión Humana", cargo="Analista de Gestión Humana",
+                )
+                self._resumen(vacante, proceso, len(perfiles), total, DOCS_REQUERIDOS)
 
     def _reset(self, empresa):
         Vacante.objects.filter(empresa=empresa, titulo__startswith="[PRUEBAS]").delete()
-        candidatos = Candidato.objects.filter(empresa=empresa, documento__startswith="99000000")
+        candidatos = Candidato.objects.filter(empresa=empresa, documento__startswith="990000")
         archivo_ids = list(
             CandidatoDocumento.objects.filter(candidato__in=candidatos).values_list("archivo_id", flat=True)
         )
@@ -697,25 +816,24 @@ class Command(BaseCommand):
         )
         return perfiles
 
-    def _crear_vacante(self, empresa, perfil, sede, responsable):
+    def _crear_vacante(
+        self, empresa, perfil, sede, responsable, *,
+        titulo, descripcion, documentos, requisitos, requisitos_deseables,
+        cupos, seleccionados, salario_min, salario_max,
+    ):
         hoy = timezone.localdate()
-        vacante = Vacante.objects.filter(empresa=empresa, titulo=TITULO_VACANTE).first()
+        vacante = Vacante.objects.filter(empresa=empresa, titulo=titulo).first()
         if not vacante:
-            vacante = Vacante(empresa=empresa, titulo=TITULO_VACANTE)
+            vacante = Vacante(empresa=empresa, titulo=titulo)
         vacante.perfil_cargo = perfil
         vacante.sede = sede
-        vacante.descripcion_publica = (
-            "Buscamos un Analista de Gestión Humana para liderar los procesos de "
-            "reclutamiento, selección, contratación, formación y bienestar del talento, "
-            "asegurando el cumplimiento de la normatividad laboral y el fortalecimiento "
-            "del clima organizacional."
-        )
-        vacante.numero_cupos = 3
-        vacante.numero_seleccionados = 1
+        vacante.descripcion_publica = descripcion
+        vacante.numero_cupos = cupos
+        vacante.numero_seleccionados = seleccionados
         vacante.tipo_contrato = "Término indefinido"
         vacante.modalidad = Vacante.Modalidad.PRESENCIAL
-        vacante.rango_salarial_min = Decimal("2500000")
-        vacante.rango_salarial_max = Decimal("3500000")
+        vacante.rango_salarial_min = salario_min
+        vacante.rango_salarial_max = salario_max
         vacante.mostrar_salario_publico = True
         vacante.estado = Vacante.Estado.ABIERTA
         vacante.fecha_apertura = hoy - timedelta(days=40)
@@ -732,15 +850,9 @@ class Command(BaseCommand):
         proceso.requiere_entrevista = True
         proceso.requiere_evaluacion = True
         proceso.requiere_validacion_documental = True
-        proceso.documentos_requeridos = list(DOCS_REQUERIDOS)
-        proceso.requisitos_obligatorios = [
-            "Profesional en Administración, Psicología, Ingeniería Industrial o afines.",
-            "Mínimo 1 año de experiencia en gestión humana o talento humano.",
-        ]
-        proceso.requisitos_deseables = [
-            "Especialización en Gestión Humana o SST.",
-            "Manejo de Excel intermedio.",
-        ]
+        proceso.documentos_requeridos = list(documentos)
+        proceso.requisitos_obligatorios = requisitos
+        proceso.requisitos_deseables = requisitos_deseables
         proceso.estado = ProcesoSeleccion.Estado.ACTIVO
         proceso.save()
         self.stdout.write(
@@ -748,9 +860,9 @@ class Command(BaseCommand):
         )
         return vacante, proceso
 
-    def _crear_postulaciones(self, empresa, vacante, proceso, responsable):
+    def _crear_postulaciones(self, empresa, vacante, proceso, responsable, candidatos, docs_requeridos, area, cargo):
         total = 0
-        for idx, data in enumerate(CANDIDATOS):
+        for idx, data in enumerate(candidatos):
             fuente, _ = FuenteReclutamiento.objects.get_or_create(
                 empresa=empresa, nombre=data["fuente"], defaults={"activo": True}
             )
@@ -788,16 +900,16 @@ class Command(BaseCommand):
                 defaults={
                     "titulo_profesional": data["titulo"],
                     "nivel_educativo": data["nivel"],
-                    "resumen_profesional": f"{data['titulo']}. {data['experiencia']} años de experiencia en gestión humana y procesos administrativos.",
+                    "resumen_profesional": f"{data['titulo']}. {data['experiencia']} años de experiencia en {area}.",
                     "anios_experiencia": Decimal(data["experiencia"]),
                     "experiencia_laboral": [
                         {
                             "empresa": "Empresa de prueba",
-                            "cargo": "Analista o auxiliar de gestión humana",
+                            "cargo": f"Profesional de {area}",
                             "fecha_inicio": "2022-01",
                             "fecha_fin": "2025-12",
                             "actual": False,
-                            "funciones": "Apoyo en reclutamiento, archivo y nómina.",
+                            "funciones": f"Apoyo en procesos de {area}.",
                         }
                     ],
                     "formacion_academica": [
@@ -812,8 +924,8 @@ class Command(BaseCommand):
                     "certificaciones": [{"nombre": "SG-SST", "institucion": "SENA", "anio": 2023}] if idx % 4 == 0 else [],
                     "competencias": data["competencias"],
                     "profesion": data["titulo"],
-                    "area_conocimiento": "Gestión Humana",
-                    "cargos_interes": ["Analista de Gestión Humana"],
+                    "area_conocimiento": area,
+                    "cargos_interes": [cargo],
                     "idiomas": [{"idioma": "Inglés", "nivel": "B1"}] if idx % 3 == 0 else [],
                     "disponibilidad": "inmediata",
                     "aspiracion_salarial": Decimal(str(2500000 + idx * 50000)),
@@ -838,7 +950,7 @@ class Command(BaseCommand):
             post.refresh_from_db()
 
             self._crear_eventos(post, data, responsable)
-            self._crear_documentos(candidato, data)
+            self._crear_documentos(candidato, data, docs_requeridos)
             self._crear_etapas(empresa, post, data, responsable)
             total += 1
         return total
@@ -866,8 +978,8 @@ class Command(BaseCommand):
                 },
             )
 
-    def _crear_documentos(self, candidato, data):
-        for tipo in DOCS_REQUERIDOS[: data["docs"]]:
+    def _crear_documentos(self, candidato, data, docs_requeridos):
+        for tipo in docs_requeridos[: data["docs"]]:
             if CandidatoDocumento.objects.filter(candidato=candidato, tipo_documento=tipo).exists():
                 continue
             label = DOC_LABELS[tipo]
@@ -984,16 +1096,16 @@ class Command(BaseCommand):
                 },
             )
 
-    def _resumen(self, vacante, proceso, total_perfiles, total_postulaciones):
+    def _resumen(self, vacante, proceso, total_perfiles, total_postulaciones, docs_requeridos):
         postulaciones = Postulacion.objects.filter(proceso_seleccion=proceso).select_related("candidato")
         estados = Counter(postulaciones.values_list("estado", flat=True))
         completos = parciales = sin_documentos = 0
         for post in postulaciones:
             presentes = set(post.candidato.documentos.values_list("tipo_documento", flat=True))
-            faltantes = [tipo for tipo in DOCS_REQUERIDOS if tipo not in presentes]
+            faltantes = [tipo for tipo in docs_requeridos if tipo not in presentes]
             if not faltantes:
                 completos += 1
-            elif len(faltantes) == len(DOCS_REQUERIDOS):
+            elif len(faltantes) == len(docs_requeridos):
                 sin_documentos += 1
             else:
                 parciales += 1
@@ -1008,4 +1120,4 @@ class Command(BaseCommand):
         self.stdout.write(
             f"Documentos: {completos} completos, {parciales} parciales, {sin_documentos} sin documentos."
         )
-        self.stdout.write("Requeridos: " + ", ".join(DOC_LABELS[t] for t in DOCS_REQUERIDOS))
+        self.stdout.write("Requeridos: " + ", ".join(DOC_LABELS[t] for t in docs_requeridos))
