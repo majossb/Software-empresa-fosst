@@ -27,6 +27,7 @@ from .serializers import (
 
 
 from apps.common.permissions import IsRol, IsRolParaEscritura
+from apps.common.competencias import parse_nivel, obtener_nombre_nivel
 
 
 class PerfilCargoListView(APIView):
@@ -174,17 +175,25 @@ class PerfilCargoListView(APIView):
             nombre = c.get('nombre')
             if not nombre or not str(nombre).strip():
                 continue
-            nivel_str = c.get('nivel') or 'Intermedio'
+            tipo_raw = str(c.get('tipo') or 'tecnica').strip().lower()
+            tipo = 'blanda' if tipo_raw in ['blanda', 'conductual'] else ('organizacional' if tipo_raw == 'organizacional' else 'tecnica')
+            
             nivel_req = c.get('nivel_requerido')
-            if not nivel_req:
-                map_niveles = {"Básico": 1, "Intermedio": 2, "Avanzado": 3, "Experto": 4, "1": 1, "2": 2, "3": 3, "4": 4}
-                nivel_req = map_niveles.get(str(nivel_str).strip(), 2)
+            if nivel_req is None:
+                nivel_str = c.get('nivel') or 'Autónomo'
+                nivel_req = parse_nivel(nivel_str, default=3)
+            else:
+                nivel_req = parse_nivel(nivel_req, default=3)
+                
+            descripcion = c.get('descripcion') or ''
+            
             CargoCompetencia.objects.create(
                 perfil_cargo=perfil,
                 nombre=str(nombre).strip(),
-                nivel=str(nivel_str).strip(),
-                tipo=c.get('tipo') or 'tecnica',
+                nivel=str(obtener_nombre_nivel(nivel_req)),
+                tipo=tipo,
                 nivel_requerido=nivel_req,
+                descripcion=str(descripcion).strip() if descripcion else None,
             )
 
         for i in data.get('indicadores', []):
@@ -253,6 +262,30 @@ class PerfilCargoListView(APIView):
                 orden_prioridad=s.get('orden_prioridad', 1),
             )
 
+        for req in data.get('requisitos_formacion', []):
+            if not isinstance(req, dict):
+                continue
+            curso_id = req.get('curso_id') or req.get('curso')
+            if not curso_id:
+                continue
+            from apps.formacion.models import CargoRequisitoFormacion, CursoFormacion
+            try:
+                curso = CursoFormacion.objects.get(id=curso_id)
+            except (CursoFormacion.DoesNotExist, ValueError):
+                continue
+
+            obligatorio = req.get('obligatorio', True)
+            vigencia_meses = req.get('vigencia_meses')
+            grupo_alternativo = req.get('grupo_alternativo') or None
+
+            CargoRequisitoFormacion.objects.create(
+                perfil_cargo=perfil,
+                curso=curso,
+                obligatorio=bool(obligatorio),
+                vigencia_meses=vigencia_meses if vigencia_meses is not None else curso.vigencia_meses,
+                grupo_alternativo=str(grupo_alternativo).strip() if grupo_alternativo else None,
+            )
+
 
 class PerfilCargoDetailView(APIView):
     permission_classes = [IsAuthenticated, IsRolParaEscritura.de("responsable", "alta_direccion")]
@@ -317,6 +350,7 @@ class PerfilCargoDetailView(APIView):
                     'interacciones': perfil.interacciones,
                     'restricciones': perfil.restricciones,
                     'suplentes': perfil.suplentes,
+                    'requisitos_formacion': perfil.requisitos_formacion,
                 }
                 for key, manager in relation_map.items():
                     if key in data:
@@ -390,6 +424,42 @@ class PerfilCargoDetailView(APIView):
             old = set(perfil.restricciones.values_list('descripcion', 'activa'))
             new = {(r.get('descripcion'), r.get('activa', True)) for r in data['restricciones']}
             if old != new:
+                return True
+
+        if 'competencias' in data:
+            old_comps = set()
+            for c in perfil.competencias.all():
+                desc_val = str(c.descripcion).strip() if c.descripcion else None
+                old_comps.add((str(c.nombre).strip(), c.tipo, c.nivel_requerido, desc_val))
+
+            new_comps = set()
+            for c in data['competencias']:
+                if isinstance(c, dict) and c.get('nombre'):
+                    tipo_raw = str(c.get('tipo') or 'tecnica').strip().lower()
+                    tipo = 'blanda' if tipo_raw in ['blanda', 'conductual'] else ('organizacional' if tipo_raw == 'organizacional' else 'tecnica')
+                    n_req = parse_nivel(c.get('nivel_requerido') or c.get('nivel'), default=3)
+                    desc_val = str(c.get('descripcion') or '').strip() or None
+                    new_comps.add((str(c.get('nombre')).strip(), tipo, n_req, desc_val))
+
+            if old_comps != new_comps:
+                return True
+
+        if 'requisitos_formacion' in data:
+            old_reqs = set()
+            for r in perfil.requisitos_formacion.all():
+                old_reqs.add((str(r.curso_id), bool(r.obligatorio), r.vigencia_meses, r.grupo_alternativo))
+
+            new_reqs = set()
+            for r in data['requisitos_formacion']:
+                if isinstance(r, dict):
+                    cid = str(r.get('curso_id') or r.get('curso') or '').strip()
+                    if cid:
+                        obl = bool(r.get('obligatorio', True))
+                        vig = r.get('vigencia_meses')
+                        alt = str(r.get('grupo_alternativo') or '').strip() or None
+                        new_reqs.add((cid, obl, vig, alt))
+
+            if old_reqs != new_reqs:
                 return True
 
         return False

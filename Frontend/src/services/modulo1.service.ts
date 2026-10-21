@@ -17,12 +17,30 @@ export interface CargoCompetencia {
   id?: string
   nombre: string
   nivel?: string
+  tipo?: 'tecnica' | 'blanda' | 'organizacional' | string
+  nivel_requerido?: number
+  nivel_nombre?: string
+  descripcion?: string
 }
 
 export interface CargoIndicador {
   id?: string
   descripcion: string
   meta?: string
+}
+
+export interface CargoRequisitoFormacion {
+  id?: string
+  perfil_cargo?: string
+  curso?: string
+  curso_id?: string
+  curso_nombre?: string
+  curso_categoria?: string
+  curso_categoria_display?: string
+  curso_requiere_certificado?: boolean
+  obligatorio: boolean
+  vigencia_meses?: number | null
+  grupo_alternativo?: string | null
 }
 
 export interface CatalogoPeligro {
@@ -105,6 +123,7 @@ export interface PerfilCargoDetail {
   indicadores: CargoIndicador[]
   peligros: CargoPeligro[]
   epps: CargoEPP[]
+  requisitos_formacion?: CargoRequisitoFormacion[]
   criticidad_sst?: string | null
   criticidad_operacional?: string | null
   criticidad_vial?: string | null

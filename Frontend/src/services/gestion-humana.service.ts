@@ -1,4 +1,5 @@
 import { apiClient } from './api.client'
+import { MatrizFormacionResponse } from './formacion.service'
 
 export interface Trabajador {
   id: string
@@ -13,6 +14,8 @@ export interface Trabajador {
   estado_operativo: string
   remuneracion_monto: string | null
   remuneracion_tipo: string
+  perfil_cargo?: string | null
+  perfil_cargo_nombre?: string | null
   activo: boolean
 }
 
@@ -60,6 +63,7 @@ export interface ExpedienteConsolidado {
   novedades: NovedadLaboral[]
   examenes_medicos: ExamenMedico[]
   licencias_conduccion: LicenciaConduccion[]
+  formacion?: MatrizFormacionResponse
 }
 
 export interface ImportarMasivoResponse {

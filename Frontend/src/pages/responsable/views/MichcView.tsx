@@ -223,6 +223,7 @@ export default function MichcView() {
                           <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded capitalize ${
                             d.cumple === 'si' ? 'bg-emerald-100 text-emerald-700' :
                             d.cumple === 'parcial' ? 'bg-amber-100 text-amber-700' :
+                            d.cumple === 'pendiente' ? 'bg-sky-100 text-sky-800' :
                             'bg-rose-100 text-rose-700'
                           }`}>
                             {d.cumple_display}

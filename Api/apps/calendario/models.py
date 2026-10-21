@@ -66,6 +66,15 @@ class Notificacion(models.Model):
     mensaje = models.TextField()
     leida = models.BooleanField(default=False)
     enviado_email = models.BooleanField(default=False)
+    metadatos = models.JSONField(
+        null=True,
+        blank=True,
+        default=None,
+        help_text=(
+            "Contexto estructurado de la alerta. "
+            "Ej: {tipo_alerta, curso_id, trabajador_id, cargo, registro_id}"
+        ),
+    )
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

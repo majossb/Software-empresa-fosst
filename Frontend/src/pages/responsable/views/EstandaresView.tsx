@@ -251,7 +251,7 @@ export default function EstandaresView() {
               <div>
                 <h3 className="font-black text-sm flex items-center gap-2">
                   <History className="w-4 h-4 text-brand-400" />
-                  Historial Completo de Respuestas (RF-USR-03)
+                  Historial Completo de Respuestas
                 </h3>
                 <p className="text-[10px] text-slate-300">
                   Consulta todas las respuestas registradas en la autoevaluación, incluyendo las diligenciadas bajo capítulos anteriores.
@@ -351,7 +351,7 @@ export default function EstandaresView() {
                 <MessageSquare className="w-5 h-5 text-amber-200" />
                 <div>
                   <h3 className="font-black text-sm">Presentar Apelación a Observación</h3>
-                  <p className="text-[10px] text-amber-100">RF-SST-03 · Impugnación justificada de observación del auditor</p>
+                  <p className="text-[10px] text-amber-100">Impugnación justificada de observación del auditor</p>
                 </div>
               </div>
               <button onClick={() => setModalApelarOpen(false)} className="text-amber-200 hover:text-white transition-colors">
@@ -420,7 +420,7 @@ export default function EstandaresView() {
               <div className="flex items-center gap-2.5">
                 <MessageSquare className="w-5 h-5 text-amber-400" />
                 <div>
-                  <h3 className="font-black text-sm">Histórico de Apelaciones Presentadas (RF-SST-03)</h3>
+                  <h3 className="font-black text-sm">Histórico de Apelaciones Presentadas</h3>
                   <p className="text-[10px] text-slate-300">Trazabilidad de impugnaciones y resoluciones de auditoría</p>
                 </div>
               </div>

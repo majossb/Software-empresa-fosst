@@ -1,6 +1,8 @@
 import uuid
 from django.db import models
 from django.db.models import JSONField, UniqueConstraint
+from django.core.validators import MinValueValidator, MaxValueValidator
+from apps.common.competencias import NIVEL_MINIMO, NIVEL_MAXIMO
 
 
 class NivelCriticidad(models.TextChoices):
@@ -129,7 +131,7 @@ class CargoResponsabilidad(models.Model):
 class CargoCompetencia(models.Model):
     class Tipo(models.TextChoices):
         TECNICA = "tecnica", "Técnica"
-        BLANDA = "blanda", "Blanda"
+        BLANDA = "blanda", "Conductual"
         ORGANIZACIONAL = "organizacional", "Organizacional"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -139,9 +141,14 @@ class CargoCompetencia(models.Model):
     # El requerimiento nuevo se captura en `tipo` + `nivel_requerido` (§4.1, base de la MCC en §9).
     nivel = models.CharField(max_length=255, null=True, blank=True)
     tipo = models.CharField(max_length=20, choices=Tipo.choices, null=True, blank=True)
+    descripcion = models.TextField(
+        null=True, blank=True,
+        help_text="Descripción de lo que significa dominar la competencia en este cargo"
+    )
     nivel_requerido = models.PositiveSmallIntegerField(
         null=True, blank=True,
-        help_text="1=Básico, 2=Intermedio, 3=Avanzado, 4=Experto"
+        validators=[MinValueValidator(NIVEL_MINIMO), MaxValueValidator(NIVEL_MAXIMO)],
+        help_text="1=Básico, 2=En desarrollo, 3=Autónomo, 4=Dominio avanzado, 5=Referente"
     )
 
     class Meta:

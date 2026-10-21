@@ -84,11 +84,15 @@ class ExpedienteTrabajadorViewSet(viewsets.ViewSet):
         examenes = ExamenMedicoOcupacional.objects.filter(trabajador=trabajador).order_by("-fecha_examen")
         licencias = LicenciaConduccion.objects.filter(trabajador=trabajador).order_by("-fecha_vencimiento")
 
+        from apps.formacion.services import calcular_matriz_formacion_trabajador
+        matriz_formacion = calcular_matriz_formacion_trabajador(trabajador)
+
         return Response({
             "trabajador": TrabajadorSerializer(trabajador).data,
             "novedades": NovedadLaboralSerializer(novedades, many=True).data,
             "examenes_medicos": ExamenMedicoOcupacionalSerializer(examenes, many=True).data,
             "licencias_conduccion": LicenciaConduccionSerializer(licencias, many=True).data,
+            "formacion": matriz_formacion,
         })
 
 

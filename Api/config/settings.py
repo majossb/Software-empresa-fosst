@@ -102,11 +102,22 @@ TEMPLATES = [
 
 WSGI_APPLICATION = "config.wsgi.application"
 
-# ── Base de datos (PostgreSQL única fuente de verdad) ─────────────────────
-DATABASES = {
-    "default": env.db("DATABASE_URL", default="postgres://postgres:postgres@localhost:5432/fosst_db")
-}
-DATABASES["default"]["CONN_MAX_AGE"] = env.int("DB_CONN_MAX_AGE", default=600)
+import sys
+TESTING = ('test' in sys.argv or 'makemigrations' in sys.argv or 'showmigrations' in sys.argv) if sys.argv else False
+
+# ── Base de datos (PostgreSQL única fuente de verdad; SQLite en tests) ────
+if TESTING:
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.sqlite3",
+            "NAME": ":memory:",
+        }
+    }
+else:
+    DATABASES = {
+        "default": env.db("DATABASE_URL", default="postgres://postgres:postgres@localhost:5432/fosst_db")
+    }
+    DATABASES["default"]["CONN_MAX_AGE"] = env.int("DB_CONN_MAX_AGE", default=600)
 
 # ── Almacenamiento de objetos (S3 / MinIO via django-storages) ─────────────
 _storage_options = {

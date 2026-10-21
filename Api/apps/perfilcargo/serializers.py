@@ -33,10 +33,17 @@ class CargoResponsabilidadSerializer(serializers.ModelSerializer):
         model = CargoResponsabilidad
         fields = ['id', 'descripcion', 'orden']
 
+from apps.common.competencias import obtener_nombre_nivel
+
 class CargoCompetenciaSerializer(serializers.ModelSerializer):
+    nivel_nombre = serializers.SerializerMethodField()
+
     class Meta:
         model = CargoCompetencia
-        fields = ['id', 'nombre', 'nivel', 'tipo', 'nivel_requerido']
+        fields = ['id', 'nombre', 'nivel', 'tipo', 'nivel_requerido', 'descripcion', 'nivel_nombre']
+
+    def get_nivel_nombre(self, obj):
+        return obtener_nombre_nivel(obj.nivel_requerido or 0)
 
 class CargoIndicadorSerializer(serializers.ModelSerializer):
     class Meta:
@@ -108,11 +115,18 @@ class PerfilCargoSerializer(serializers.ModelSerializer):
     restricciones = CargoRestriccionSerializer(many=True, read_only=True)
     suplentes = CargoSuplenteSerializer(many=True, read_only=True)
     versiones = CargoVersionSerializer(many=True, read_only=True)
+    requisitos_formacion = serializers.SerializerMethodField()
     trabajadores_count = serializers.IntegerField(read_only=True)
     vacantes_activas_count = serializers.IntegerField(read_only=True, default=0)
     procesos_activos_count = serializers.IntegerField(read_only=True, default=0)
     sede_nombre = serializers.SerializerMethodField()
     sede_ciudad = serializers.SerializerMethodField()
+
+    def get_requisitos_formacion(self, obj):
+        from apps.formacion.models import CargoRequisitoFormacion
+        from apps.formacion.serializers import CargoRequisitoFormacionSerializer
+        reqs = CargoRequisitoFormacion.objects.filter(perfil_cargo=obj).select_related("curso")
+        return CargoRequisitoFormacionSerializer(reqs, many=True).data
 
     def get_sede_nombre(self, obj):
         return obj.sede.nombre if obj.sede_id else None

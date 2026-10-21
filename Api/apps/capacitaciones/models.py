@@ -1,5 +1,7 @@
 import uuid
+from django.conf import settings
 from django.db import models
+from django.utils import timezone
 
 
 class Trabajador(models.Model):
@@ -39,6 +41,14 @@ class Trabajador(models.Model):
     sede = models.ForeignKey("organizacion.Sede", on_delete=models.SET_NULL, null=True, blank=True, related_name="trabajadores")
     perfil_cargo = models.ForeignKey(
         "perfilcargo.PerfilCargo", on_delete=models.SET_NULL, null=True, blank=True, related_name="trabajadores"
+    )
+    usuario = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="trabajador",
+        help_text="Usuario del sistema vinculado a este trabajador (opcional)"
     )
     nombre = models.CharField(max_length=150)
     documento = models.CharField(max_length=30)
@@ -85,6 +95,13 @@ class Trabajador(models.Model):
         constraints = [
             models.UniqueConstraint(fields=["empresa", "documento"], name="uq_trabajador_empresa_documento")
         ]
+
+    def resolver_usuario(self):
+        """Retorna el Usuario asociado explícitamente o por coincidencia de documento en la misma empresa."""
+        if self.usuario:
+            return self.usuario
+        from apps.accounts.models import Usuario
+        return Usuario.objects.filter(empresa=self.empresa, documento=self.documento, activo=True).first()
 
 
 class AfiliacionTrabajador(models.Model):
@@ -137,8 +154,41 @@ class Capacitacion(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     empresa = models.ForeignKey("empresas.Empresa", on_delete=models.CASCADE, related_name="capacitaciones")
     tema = models.CharField(max_length=200)
+    objetivo = models.CharField(
+        max_length=255,
+        blank=True,
+        default="",
+        help_text="Objetivo de la capacitación en una línea",
+    )
+    curso = models.ForeignKey(
+        "formacion.CursoFormacion",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="capacitaciones",
+        help_text="Curso del catálogo que cubre esta capacitación (opcional)",
+    )
+    competencia = models.ForeignKey(
+        "perfilcargo.CargoCompetencia",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="capacitaciones",
+        help_text="Competencia del cargo que desarrolla esta capacitación (opcional)",
+    )
+    brechas = models.ManyToManyField(
+        "hbseo.Brecha",
+        blank=True,
+        related_name="capacitaciones",
+        help_text="Brechas de HBSEO que busca cerrar esta capacitación",
+    )
     proveedor = models.CharField(max_length=150, blank=True, null=True)
     fecha = models.DateTimeField()
+    horas_duracion = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        help_text="Horas de duración estimadas o realizadas",
+    )
     num_asistentes = models.IntegerField(default=0)
     tiene_certificado = models.BooleanField(default=False)
     estado = models.CharField(max_length=20, choices=Estado.choices, default=Estado.PROGRAMADA)
@@ -147,6 +197,10 @@ class Capacitacion(models.Model):
 
     class Meta:
         db_table = "capacitaciones"
+        ordering = ["-fecha", "-created_at"]
+
+    def __str__(self):
+        return f"{self.tema} ({self.get_estado_display()} - {self.fecha.strftime('%Y-%m-%d') if self.fecha else ''})"
 
 
 class ParticipanteCapacitacion(models.Model):
@@ -155,6 +209,30 @@ class ParticipanteCapacitacion(models.Model):
     trabajador = models.ForeignKey(Trabajador, on_delete=models.CASCADE, related_name="participaciones")
     asistio = models.BooleanField(default=False)
     certificado_url = models.URLField(blank=True, null=True)
+    soporte = models.ForeignKey(
+        "evidencias.Archivo",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="participaciones_capacitacion",
+    )
+    nota_evaluacion = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        help_text="Calificación obtenida en evaluación de conocimiento (si aplica)",
+    )
+    nivel_alcanzado = models.PositiveSmallIntegerField(
+        null=True,
+        blank=True,
+        help_text="Nivel alcanzado en la reevaluación de competencia (1..5)",
+    )
+    observaciones = models.TextField(blank=True, default="")
+    created_at = models.DateTimeField(default=timezone.now)
 
     class Meta:
         db_table = "participantes_capacitacion"
+        constraints = [
+            models.UniqueConstraint(fields=["capacitacion", "trabajador"], name="uq_participante_capacitacion")
+        ]

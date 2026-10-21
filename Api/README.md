@@ -164,13 +164,17 @@ Ya validé que el proyecto corre `python manage.py check` sin errores y que
 | Planes y suscripciones | `planes` | ✅ Completo (CRUD) |
 | Sedes / Organigrama / Procesos | `organizacion` | ✅ Completo (CRUD + jerarquía en árbol) |
 | Hallazgos / Plan de mejora | `hallazgos` | ✅ Completo (CRUD) |
-| Capacitaciones / Trabajadores / Afiliaciones | `capacitaciones` | ✅ Completo (CRUD) |
-| Calendario / Notificaciones / Incidentes | `calendario` | ✅ Completo (CRUD + acción "marcar leída") |
-| Estándares / Evaluaciones / Respuestas | `estandares` | 🟡 Solo modelos (falta lógica de cálculo de puntaje) |
-| Archivos / Evidencias | `evidencias` | 🟡 Solo modelos (falta subida de archivos) |
-| Informes | `informes` | 🟡 Solo modelos (falta generación de contenido) |
-| Perfil de cargo + catálogos | `perfilcargo` | 🟡 Solo modelos (falta CRUD, IA y generación de PDF) |
-| Dashboard | `dashboard` | ⬜ Pendiente (agregaciones de todos los módulos) |
+| Capacitaciones / Participantes / Asistencia | `capacitaciones` | ✅ Completo (cierre de brechas, sugerencias) |
+| Formación & Competencias (MCC) | `formacion` | ✅ Completo (evaluaciones, cursos, vigencias) |
+| Perfil de cargo + competencias + requisitos | `perfilcargo` | ✅ Completo (CRUD, requisitos, alternativas) |
+| Matriz MICHC (Habilitación / Estados) | `michc` | ✅ Completo (reconoce formación y competencias) |
+| HBSEO (Gestión de Brechas) | `hbseo` | ✅ Completo (origen formación, cierre atómico) |
+| Motor de Alertas Preventivas | `alertas` | ✅ Completo (4 handlers, 25d configurable) |
+| Calendario / Notificaciones / Incidentes | `calendario` | ✅ Completo (CRUD + metadatos estructurados) |
+| Estándares / Evaluaciones / Respuestas | `estandares` | ✅ Completo |
+| Archivos / Evidencias | `evidencias` | ✅ Completo |
+| Informes | `informes` | ✅ Completo |
+| Dashboard | `dashboard` | ✅ Completo |
 
 Los módulos marcados 🟡 ya tienen sus **modelos** completos (`models.py`) y las
 migraciones ya se generaron y validaron sin errores (`makemigrations` corrió

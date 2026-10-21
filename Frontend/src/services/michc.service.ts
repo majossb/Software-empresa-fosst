@@ -5,7 +5,7 @@ export interface DetalleRequisito {
   tipo_requisito: string
   tipo_requisito_display: string
   requisito_descripcion: string
-  cumple: 'si' | 'no' | 'parcial' | 'no_aplica'
+  cumple: 'si' | 'no' | 'parcial' | 'no_aplica' | 'pendiente'
   cumple_display: string
   observacion: string
 }

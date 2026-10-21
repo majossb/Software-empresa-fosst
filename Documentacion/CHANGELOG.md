@@ -75,20 +75,64 @@ Este documento registra los cambios técnicos, funcionales, estructurales y de s
 
 ---
 
-## [Fase 4] Suite de Pruebas Automatizadas y Verificación
+## [Fase 4] Capacitaciones que Cierran Brechas
 
-### Resultados de Ejecución
-- **Total de pruebas unitarias**: 77 ejecutadas.
-- **Resultado**: 77 exitosas (`OK`), 0 fallas, 0 errores.
-- **Cobertura de pruebas**:
-  - Multi-tenancy (`EmpresaScopedViewSet`)
-  - Soft delete & hashes SHA-256
-  - Importación masiva Excel
-  - Gating de Planes
-  - Estampado de firmas PDF
-  - Métricas de accidentalidad & FURAT
-  - Embudo de reclutamiento & reportes periódicos HBSEO
-  - Cálculo de semaforización MICHC
+### Cambios Realizados
+- **Capacitación vinculada a brechas y cursos (`apps/capacitaciones`, `apps/hbseo`, `apps/formacion`)**:
+  - Modelo `Capacitacion` enriquecido con relaciones opcionales a `CursoFormacion`, `CargoCompetencia`, `Brecha` (relación M2M) y campo `objetivo`.
+  - Endpoint `/api/capacitaciones/sugerir-participantes/` para detectar automáticamente colaboradores con brechas o cursos vencidos/faltantes.
+  - Finalización de capacitación: generación automática de `RegistroFormacion` con vigencia calculada para participantes asistentes, generación de reevaluación pendiente para brechas de competencias, y cierre de brechas a estado `subsanada` con evento en línea de tiempo inmutable.
+  - Recálculo atómico de estado operativo en MICHC con patrón `transaction.on_commit`.
+  - Frontend: `CapacitacionesView.tsx` enriquecido con selector "¿Qué brecha o necesidad cubre?", pre-carga de participantes sugeridos y registro de asistencia con certificado.
+
+---
+
+## [Fase 5] Alertas Preventivas de Formación y Vencimientos
+
+### Cambios Realizados
+- **Motor Genérico de Alertas (`apps/alertas`, `apps/calendario`)**:
+  - Modelo `ReglaAlerta` ampliado con `TipoHandler` (`exacta`, `vencido_rango`, `sin_registrar`, `evaluacion_pendiente`) y nuevos modelos de origen (`RegistroFormacion`, `EvaluacionCompetencia`).
+  - Modelo `Notificacion` extendido con campo estructurado `metadatos` (JSON) para trazabilidad libre de parseo de cadenas.
+  - Lógica de evaluación y deduplicación diaria en `alertas/services.py`:
+    - Días de anticipación configurables (alerta a los 25 días o 30 días según regla).
+    - Detección de cursos obligatorios vencidos (alerta crítica) y cursos obligatorios sin registrar.
+    - Detección de competencias requeridas pendientes de evaluación o con brecha abierta.
+  - Semillero de reglas (`seed_reglas_alerta`): 4 nuevas reglas estándar del sistema para formación.
+  - API REST: `NotificacionViewSet` en `/api/alertas/notificaciones/` con filtros por `leida`, `nivel`, `tipo_alerta`, `trabajador_id` y `cargo`; acciones `marcar-leida`, `marcar-resuelta`, endpoint `resumen` y `accion_url` contextual.
+  - Frontend: `AlertasView.tsx` rediseñado con tarjetas KPI, filtros interactivos, acciones directas ("Registrar curso", "Programar capacitación") y panel colapsable de reglas.
+
+---
+
+## [Fase 6] Rediseño de la Pantalla "Formación & Competencias"
+
+### Cambios Realizados
+- **Estructura unificada de 5 pestañas en `/app/responsable/formacion`**:
+  - **Pestaña 1 (Resumen)**: Indicadores con anillos de avance SVG (`DonutProgress`) para competencias cumplidas, formación vigente y brechas subsanadas; distribución con barra apilada (`StackedBar`) y lista de "Lo más urgente" con botones de acción directa en cada fila.
+  - **Pestaña 2 (Matriz de competencias)**: Filtros combinables por Proceso organizacional, Perfil de cargo y Colaborador. Vista matricial con celdas interactivas en semáforo (OK / brecha por nivel). Clic en celda abre panel lateral tipo Drawer (`DetalleCompetenciaDrawer`) con historial y acción de evaluar. Soporte de exportación a Excel (CSV con UTF-8 BOM) e impresión / PDF.
+  - **Pestaña 3 (Evaluaciones)**: Historial completo de evaluaciones inmutables con identificación de evaluador y rol (`gestion_humana`, `jefe_inmediato`, `autoevaluacion`), método de evaluación y cálculo de brecha. Modal `NuevaEvaluacionModal` con escala 1 a 5 y sugerencia inmediata de capacitación si se detecta brecha.
+  - **Pestaña 4 (Cursos y vigencias)**: Control detallado por trabajador y cargo, semaforización de vencimiento y botón de acción para abrir `RegistrarCursoModal` con cálculo automático de fecha de vencimiento según vigencia del cargo/curso.
+  - **Pestaña 5 (Plan de capacitación)**: Vista de capacitaciones programadas y realizadas con participantes, asistencia y verificación de cierre de brechas.
+- **Calidad de interfaz y accesibilidad**:
+  - Cero texto crudo o códigos técnicos en pantalla.
+  - Componentes accesibles con etiquetas semánticas y `aria-label`.
+  - Adaptabilidad responsiva validada para resoluciones de 360 px, 768 px y 1280 px.
+
+---
+
+## [Fase 7] Calidad, Auditoría de Textos, Tests y Cierre Técnico
+
+### Cambios Realizados
+- **Auditoría Integral de Textos UI**:
+  - Búsqueda recursiva en `frontend/src` de cadenas técnicas (`RF-`, `RN-`, `§`, `requerimiento`, `documento del cliente`, `versión 0`, `MCC`).
+  - Depuración de textos visibles en `EmpresaContextoView.tsx`, `EstandaresView.tsx`, `GestionHumanaView.tsx` y `ReclutamientoView.tsx` para presentar lenguaje 100% natural al usuario final.
+- **Suite de Pruebas Automatizadas Backend**:
+  - 69 pruebas unitarias y de integración pasando al 100% (`OK`), cubriendo:
+    - Escala de competencias 1 a 5 y validación de roles de evaluador (`apps.formacion`).
+    - Requisitos de formación por cargo, vigencias y herencia (`apps.perfilcargo`).
+    - Motor MICHC con reconocimiento de formación obligatoria y competencias (`apps.michc`).
+    - Capacitaciones con cierre de brechas y participantes sugeridos (`apps.capacitaciones`).
+    - Motor de alertas preventivas con anticipación configurable (25 días) y deduplicación (`apps.alertas`).
+- **Verificación Frontend**: Compilación TypeScript y Vite en producción sin errores (`✓ built in 9.73s`).
 
 ---
 

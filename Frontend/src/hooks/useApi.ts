@@ -162,10 +162,18 @@ export function useActualizarPlanMejora() {
 }
 
 // ── Capacitaciones ────────────────────────────────────────────────
-export function useCapacitaciones() {
+export function useCapacitaciones(params?: Record<string, string>) {
   return useQuery({
-    queryKey: ['capacitaciones'],
-    queryFn: capacitacionService.listar,
+    queryKey: ['capacitaciones', params],
+    queryFn: () => capacitacionService.listar(params),
+  })
+}
+
+export function useCapacitacion(id: string | null) {
+  return useQuery({
+    queryKey: ['capacitaciones', id],
+    queryFn: () => capacitacionService.obtener(id!),
+    enabled: !!id,
   })
 }
 
@@ -184,8 +192,60 @@ export function useActualizarCapacitacion() {
   return useMutation({
     mutationFn: ({ id, data }: { id: string; data: any }) =>
       capacitacionService.actualizar(id, data),
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
       qc.invalidateQueries({ queryKey: ['capacitaciones'] })
+      qc.invalidateQueries({ queryKey: ['capacitaciones', variables.id] })
+    },
+  })
+}
+
+export function useInscribirParticipantes() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ capacitacionId, trabajadoresIds }: { capacitacionId: string; trabajadoresIds: string[] }) =>
+      capacitacionService.inscribirParticipantes(capacitacionId, trabajadoresIds),
+    onSuccess: (_data, variables) => {
+      qc.invalidateQueries({ queryKey: ['capacitaciones'] })
+      qc.invalidateQueries({ queryKey: ['capacitaciones', variables.capacitacionId] })
+    },
+  })
+}
+
+export function useRegistrarAsistencia() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({
+      capacitacionId,
+      participantes,
+    }: {
+      capacitacionId: string
+      participantes: Array<{
+        trabajador_id: string
+        asistio: boolean
+        certificado_url?: string
+        soporte_id?: string
+        nota_evaluacion?: number | null
+        nivel_alcanzado?: number | null
+        observaciones?: string
+      }>
+    }) => capacitacionService.registrarAsistencia(capacitacionId, participantes),
+    onSuccess: (_data, variables) => {
+      qc.invalidateQueries({ queryKey: ['capacitaciones'] })
+      qc.invalidateQueries({ queryKey: ['capacitaciones', variables.capacitacionId] })
+    },
+  })
+}
+
+export function useFinalizarCapacitacion() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (capacitacionId: string) => capacitacionService.finalizar(capacitacionId),
+    onSuccess: (_data, capacitacionId) => {
+      qc.invalidateQueries({ queryKey: ['capacitaciones'] })
+      qc.invalidateQueries({ queryKey: ['capacitaciones', capacitacionId] })
+      qc.invalidateQueries({ queryKey: ['brechas'] })
+      qc.invalidateQueries({ queryKey: ['michc'] })
+      qc.invalidateQueries({ queryKey: ['formacion'] })
     },
   })
 }

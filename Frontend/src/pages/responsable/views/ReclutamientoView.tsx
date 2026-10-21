@@ -243,7 +243,7 @@ export default function ReclutamientoView() {
   const handlePreseleccionar = async () => {
     if (!actionModal.postulacion) return
     if (preseleccionarForm.es_excepcion && !preseleccionarForm.justificacion_excepcion.trim()) {
-      alert('Debe justificar la excepción (RN-R09).')
+      alert('Debe justificar la excepción.')
       return
     }
     try {
@@ -351,7 +351,7 @@ export default function ReclutamientoView() {
   const handleSeleccionar = async () => {
     if (!actionModal.postulacion) return
     if (seleccionarForm.es_excepcion && !seleccionarForm.justificacion_excepcion.trim()) {
-      alert('Debe justificar la excepción (RN-R09).')
+      alert('Debe justificar la excepción.')
       return
     }
     try {
@@ -371,7 +371,7 @@ export default function ReclutamientoView() {
   const handleCerrar = async () => {
     if (!actionModal.postulacion) return
     if (!cerrarForm.motivo.trim()) {
-      alert('El motivo de cierre es obligatorio (RN-R04).')
+      alert('El motivo de cierre es obligatorio.')
       return
     }
     try {
@@ -387,7 +387,7 @@ export default function ReclutamientoView() {
   const handleNoSeleccionar = async () => {
     if (!actionModal.postulacion) return
     if (noSeleccionarMotivo.trim().length < 5) {
-      alert('El motivo de no selección debe tener al menos 5 caracteres (RN-R04).')
+      alert('El motivo de no selección debe tener al menos 5 caracteres.')
       return
     }
     try {
@@ -947,7 +947,7 @@ export default function ReclutamientoView() {
             }`}
           >
             <Briefcase className="w-4 h-4" />
-            Vacantes y Requerimientos ({vacantes.length})
+            Vacantes ({vacantes.length})
           </button>
 
           <button
@@ -1070,7 +1070,7 @@ export default function ReclutamientoView() {
                       <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase text-[11px] font-semibold">
                         <th className="p-3.5">Candidato</th>
                         <th className="p-3.5">Estado</th>
-                        <th className="p-3.5 text-center">Semáforo de Etapas (RN-R03)</th>
+                        <th className="p-3.5 text-center">Semáforo de Etapas</th>
                         <th className="p-3.5 text-center">Entrevista</th>
                         <th className="p-3.5 text-center">Evaluación</th>
                         <th className="p-3.5 text-right">Acciones de Selección</th>
@@ -2021,7 +2021,7 @@ export default function ReclutamientoView() {
       {/* MODAL: PRESELECCIONAR CANDIDATO                          */}
       {/* ───────────────────────────────────────────────────────── */}
       {actionModal.type === 'preseleccionar' && actionModal.postulacion && (
-        <Modal open={true} onClose={() => setActionModal({ type: null })} title="Preseleccionar Candidato (RN-R02)" maxWidth="28rem">
+        <Modal open={true} onClose={() => setActionModal({ type: null })} title="Preseleccionar Candidato" maxWidth="28rem">
           <div className="space-y-4">
             <p className="text-xs text-slate-500">
               Verifique el cumplimiento de requisitos del perfil de cargo para {actionModal.postulacion.candidato_nombre}.
@@ -2068,7 +2068,7 @@ export default function ReclutamientoView() {
                     onChange={(e) => setPreseleccionarForm(p => ({ ...p, es_excepcion: e.target.checked }))}
                     className="rounded text-amber-600"
                   />
-                  <span className="font-medium">Autorizar por excepción (RN-R09)</span>
+                  <span className="font-medium">Autorizar por excepción</span>
                 </label>
                 {preseleccionarForm.es_excepcion && (
                   <textarea
@@ -2321,7 +2321,7 @@ export default function ReclutamientoView() {
       {/* MODAL: SELECCIONAR CANDIDATO                             */}
       {/* ───────────────────────────────────────────────────────── */}
       {actionModal.type === 'seleccionar' && actionModal.postulacion && (
-        <Modal open={true} onClose={() => setActionModal({ type: null })} title="Decisión Final de Selección (RN-R06)" maxWidth="28rem">
+        <Modal open={true} onClose={() => setActionModal({ type: null })} title="Decisión Final de Selección" maxWidth="28rem">
           <div className="space-y-4">
             <p className="text-xs text-slate-600">
               ¿Desea formalizar la selección de <strong>{actionModal.postulacion.candidato_nombre}</strong> para esta vacante?
@@ -2347,7 +2347,7 @@ export default function ReclutamientoView() {
                     onChange={(e) => setSeleccionarForm(p => ({ ...p, es_excepcion: e.target.checked }))}
                     className="rounded text-amber-600"
                   />
-                  <span className="font-medium">Seleccionar por excepción (RN-R09)</span>
+                  <span className="font-medium">Seleccionar por excepción</span>
                 </label>
                 {seleccionarForm.es_excepcion && (
                   <textarea
@@ -2398,7 +2398,7 @@ export default function ReclutamientoView() {
               </div>
 
               <div>
-                <label className="block text-slate-700 font-medium mb-1">Motivo Obligatorio (RN-R04):</label>
+                <label className="block text-slate-700 font-medium mb-1">Motivo Obligatorio:</label>
                 <textarea
                   rows={3}
                   value={cerrarForm.motivo}
@@ -2466,7 +2466,7 @@ export default function ReclutamientoView() {
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <Card className="max-w-lg w-full p-6 space-y-4 bg-white max-h-[90vh] overflow-y-auto shadow-2xl">
             <h3 className="text-base font-bold text-slate-900">
-              {editingVacanteId ? 'Editar Requerimiento / Vacante' : 'Crear Requerimiento / Vacante'}
+              {editingVacanteId ? 'Editar Vacante' : 'Crear Vacante'}
             </h3>
 
             <div className="space-y-3 text-xs">
@@ -2730,7 +2730,7 @@ export default function ReclutamientoView() {
       {/* MODAL: NO SELECCIONAR (RN-R04)                            */}
       {/* ───────────────────────────────────────────────────────── */}
       {actionModal.type === 'no_seleccionar' && actionModal.postulacion && (
-        <Modal open={true} onClose={() => setActionModal({ type: null })} title="No seleccionar candidato (RN-R04)" maxWidth="28rem">
+        <Modal open={true} onClose={() => setActionModal({ type: null })} title="No seleccionar candidato" maxWidth="28rem">
           <div className="space-y-4 text-xs">
             <p className="text-slate-600">
               Registra el motivo por el cual <b>{actionModal.postulacion.candidato_nombre}</b> no continúa en el proceso.

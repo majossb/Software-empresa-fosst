@@ -10,13 +10,63 @@ import {
 } from '@/hooks/useApi'
 import { modulo0Service } from '@/services/modulo0.service'
 import { modulo1Service } from '@/services/modulo1.service'
+import { formacionService, CursoFormacion } from '@/services/formacion.service'
 import { Card, PageHeader, Badge, Button } from '@/components/ui'
 import { FormField, Input, Select, Textarea, LoadingSpinner, ErrorDisplay, Modal } from '@/components/ui/forms'
 import { 
   ArrowLeft, Save, Sparkles, Plus, Trash2, ShieldAlert, 
   Layers, Settings, User, GraduationCap, CheckSquare, Shield, Activity, BrainCircuit,
-  Loader2, Check
+  Loader2, Check, Info, ChevronDown, ChevronUp, Lightbulb
 } from 'lucide-react'
+
+export interface FormRequisitoFormacion {
+  curso_id: string
+  curso_nombre: string
+  curso_categoria: string
+  curso_categoria_display?: string
+  obligatorio: boolean
+  vigencia_meses: number | null
+  grupo_alternativo: string | null
+}
+
+export interface FormCompetencia {
+  id?: string
+  nombre: string
+  tipo: 'tecnica' | 'blanda' | 'organizacional'
+  nivel_requerido: number
+  descripcion: string
+}
+
+export const ESCALA_NIVELES = [
+  { value: 1, label: '1 · Básico', desc: 'Conocimiento inicial o teórico; requiere supervisión y acompañamiento constante.' },
+  { value: 2, label: '2 · En desarrollo', desc: 'Aplica conocimientos y habilidades en tareas rutinarias con supervisión periódica.' },
+  { value: 3, label: '3 · Autónomo', desc: 'Ejecuta con independencia y eficacia en situaciones habituales del cargo.' },
+  { value: 4, label: '4 · Dominio avanzado', desc: 'Domina la competencia en situaciones complejas, resuelve imprevistos y orienta a otros.' },
+  { value: 5, label: '5 · Referente', desc: 'Modelo de excelencia institucional, transfiere conocimientos y genera buenas prácticas.' },
+]
+
+export const SUGERENCIAS_COMPETENCIAS = {
+  tecnica: [
+    { nombre: 'Conducción defensiva', descripcion: 'Anticipación y prevención de situaciones de riesgo en vía.' },
+    { nombre: 'Inspección vehicular', descripcion: 'Verificación preoperacional técnica y mecánica de vehículos.' },
+    { nombre: 'Manejo de rutas', descripcion: 'Planificación de trayectos, optimización de tiempos y protocolos viales.' },
+    { nombre: 'Manejo de herramientas', descripcion: 'Uso seguro y mantenimiento básico de herramientas de trabajo.' },
+  ],
+  blanda: [
+    { nombre: 'Comunicación asertiva', descripcion: 'Expresión clara y respetuosa con compañeros, líderes y clientes.' },
+    { nombre: 'Atención sostenida', descripcion: 'Concentración focalizada durante la ejecución de tareas críticas.' },
+    { nombre: 'Tolerancia a la presión', descripcion: 'Capacidad de respuesta serena y eficaz ante situaciones demandantes.' },
+    { nombre: 'Trabajo en equipo', descripcion: 'Cooperación activa para el logro conjunto de los objetivos del área.' },
+    { nombre: 'Liderazgo', descripcion: 'Orientación, motivación y guía de equipos de trabajo.' },
+  ],
+  organizacional: [
+    { nombre: 'Cumplimiento normativo', descripcion: 'Apego estricto a las leyes, estándares y reglamentos aplicables.' },
+    { nombre: 'Compromiso con SST', descripcion: 'Cultura proactiva de autocuidado, reporte de riesgos y uso de EPP.' },
+    { nombre: 'Cultura de seguridad vial', descripcion: 'Compromiso con las políticas y directrices del PESV.' },
+    { nombre: 'Mejora continua', descripcion: 'Aporte de iniciativas para optimizar procesos y prevenir fallas.' },
+    { nombre: 'Confidencialidad', descripcion: 'Manejo ético y reservado de la información sensible corporativa.' },
+  ],
+}
 
 type TabType = 'general' | 'requisitos' | 'funciones' | 'peligros' | 'indicadores'
 
@@ -55,8 +105,14 @@ export default function PerfilCargoFormView() {
   // Listas Dinámicas
   const [funcionesList, setFuncionesList] = useState<{ descripcion: string; orden: number }[]>([])
   const [responsabilidadesList, setResponsabilidadesList] = useState<{ descripcion: string; orden: number }[]>([])
-  const [competenciasList, setCompetenciasList] = useState<{ nombre: string; nivel: string }[]>([])
+  const [competenciasList, setCompetenciasList] = useState<FormCompetencia[]>([])
+  const [showNivelesLeyenda, setShowNivelesLeyenda] = useState(false)
   const [indicadoresList, setIndicadoresList] = useState<{ descripcion: string; meta: string }[]>([])
+
+  // Formación Requerida (Cursos y Certificaciones - Fase 2)
+  const [requisitosFormacionList, setRequisitosFormacionList] = useState<FormRequisitoFormacion[]>([])
+  const [catalogoCursos, setCatalogoCursos] = useState<CursoFormacion[]>([])
+  const [selectedCursoToAdd, setSelectedCursoToAdd] = useState<string>('')
 
   // Peligros y EPPs
   const [selectedPeligros, setSelectedPeligros] = useState<string[]>([])
@@ -109,14 +165,66 @@ export default function PerfilCargoFormView() {
 
       setFuncionesList(perfilData.funciones?.map(f => ({ descripcion: f.descripcion, orden: f.orden ?? 0 })) || [])
       setResponsabilidadesList(perfilData.responsabilidades?.map(r => ({ descripcion: r.descripcion, orden: r.orden ?? 0 })) || [])
-      setCompetenciasList(perfilData.competencias?.map(c => ({ nombre: c.nombre, nivel: c.nivel || 'Intermedio' })) || [])
+      setCompetenciasList(perfilData.competencias?.map(c => ({
+        id: c.id,
+        nombre: c.nombre,
+        tipo: (c.tipo === 'blanda' || c.tipo === 'conductual' ? 'blanda' : c.tipo === 'organizacional' ? 'organizacional' : 'tecnica') as FormCompetencia['tipo'],
+        nivel_requerido: c.nivel_requerido ?? 3,
+        descripcion: c.descripcion || '',
+      })) || [])
       setIndicadoresList(perfilData.indicadores?.map(i => ({ descripcion: i.descripcion, meta: i.meta || '' })) || [])
 
       setSelectedPeligros(perfilData.peligros?.map(p => p.catalogo_peligro_id).filter(Boolean) as string[] || [])
       setSelectedEpps(perfilData.epps?.filter(e => e.catalogo_epp_id).map(e => e.catalogo_epp_id as string) || [])
       setCustomEpps(perfilData.epps?.filter(e => !e.catalogo_epp_id && e.nombre_personalizado).map(e => e.nombre_personalizado as string) || [])
+
+      if (perfilData.requisitos_formacion) {
+        setRequisitosFormacionList(perfilData.requisitos_formacion.map((r: any) => ({
+          curso_id: r.curso_id || r.curso,
+          curso_nombre: r.curso_nombre || 'Curso',
+          curso_categoria: r.curso_categoria || 'sst',
+          curso_categoria_display: r.curso_categoria_display,
+          obligatorio: r.obligatorio !== undefined ? r.obligatorio : true,
+          vigencia_meses: r.vigencia_meses !== undefined ? r.vigencia_meses : null,
+          grupo_alternativo: r.grupo_alternativo || null,
+        })))
+      }
     }
   }, [isEdit, perfilData])
+
+  // Cargar catálogo de cursos de formación
+  useEffect(() => {
+    formacionService.getCursos().then(res => {
+      const data = Array.isArray(res) ? res : ((res as any)?.results || [])
+      setCatalogoCursos(data)
+    }).catch(console.error)
+  }, [])
+
+  const addRequisitoFormacion = (curso: CursoFormacion) => {
+    if (requisitosFormacionList.some(r => r.curso_id === curso.id)) return
+    setRequisitosFormacionList([
+      ...requisitosFormacionList,
+      {
+        curso_id: curso.id,
+        curso_nombre: curso.nombre,
+        curso_categoria: curso.categoria,
+        curso_categoria_display: curso.categoria_display,
+        obligatorio: true,
+        vigencia_meses: curso.vigencia_meses ?? null,
+        grupo_alternativo: null,
+      }
+    ])
+  }
+
+  const updateRequisitoFormacion = (index: number, key: keyof FormRequisitoFormacion, val: any) => {
+    const list = [...requisitosFormacionList]
+    list[index] = { ...list[index], [key]: val }
+    setRequisitosFormacionList(list)
+  }
+
+  const removeRequisitoFormacion = (index: number) => {
+    setRequisitosFormacionList(requisitosFormacionList.filter((_, i) => i !== index))
+  }
 
   // Alinear el nombre del cargo para el asistente de IA
   useEffect(() => {
@@ -157,16 +265,22 @@ export default function PerfilCargoFormView() {
     setResponsabilidadesList(responsabilidadesList.filter((_, i) => i !== index))
   }
 
-  const addCompetencia = () => {
-    setCompetenciasList([...competenciasList, { nombre: '', nivel: 'Intermedio' }])
+  const addCompetencia = (tipo: FormCompetencia['tipo']) => {
+    setCompetenciasList([...competenciasList, { nombre: '', tipo, nivel_requerido: 3, descripcion: '' }])
   }
-  const updateCompetencia = (index: number, key: 'nombre' | 'nivel', val: string) => {
+  const updateCompetencia = (index: number, key: keyof FormCompetencia, val: string | number) => {
     const list = [...competenciasList]
     list[index] = { ...list[index], [key]: val }
     setCompetenciasList(list)
   }
   const removeCompetencia = (index: number) => {
     setCompetenciasList(competenciasList.filter((_, i) => i !== index))
+  }
+  const addSugerencia = (tipo: FormCompetencia['tipo'], sug: { nombre: string; descripcion: string }) => {
+    const yaExiste = competenciasList.some(c => c.nombre.toLowerCase() === sug.nombre.toLowerCase() && c.tipo === tipo)
+    if (!yaExiste) {
+      setCompetenciasList([...competenciasList, { nombre: sug.nombre, tipo, nivel_requerido: 3, descripcion: sug.descripcion }])
+    }
   }
 
   const addIndicador = () => {
@@ -414,13 +528,24 @@ export default function PerfilCargoFormView() {
       habilidades: habilidades.trim() || null,
       funciones: funcionesList.filter(f => f.descripcion.trim() !== ''),
       responsabilidades: responsabilidadesList.filter(r => r.descripcion.trim() !== ''),
-      competencias: competenciasList.filter(c => c.nombre.trim() !== ''),
+      competencias: competenciasList.filter(c => c.nombre.trim() !== '').map(c => ({
+        nombre: c.nombre.trim(),
+        tipo: c.tipo,
+        nivel_requerido: c.nivel_requerido,
+        descripcion: c.descripcion?.trim() || '',
+      })),
       indicadores: indicadoresList.filter(i => i.descripcion.trim() !== ''),
       peligros: selectedPeligros.map(id => ({ catalogo_peligro_id: id })),
       epps: [
         ...selectedEpps.map(id => ({ catalogo_epp_id: id })),
         ...customEpps.map(name => ({ nombre_personalizado: name }))
       ],
+      requisitos_formacion: requisitosFormacionList.map(r => ({
+        curso_id: r.curso_id,
+        obligatorio: r.obligatorio,
+        vigencia_meses: r.vigencia_meses,
+        grupo_alternativo: r.grupo_alternativo?.trim() || null,
+      })),
       motivo_cambio: isEdit ? motivoCambio : 'Registro inicial del cargo'
     }
 
@@ -610,45 +735,223 @@ export default function PerfilCargoFormView() {
 
         {/* Tab 2: Requisitos */}
         {activeTab === 'requisitos' && (
-          <Card title="Perfil de Requisitos y Competencias Técnicas">
-            <div className="space-y-4">
-              <FormField label="Educación Requerida">
-                <Textarea 
-                  value={educacion}
-                  onChange={(e) => setEducacion(e.target.value)}
-                  placeholder="Ej: Profesional en Ingeniería Industrial, Tecnólogo en Administración de Empresas..."
-                  className="min-h-[80px]"
-                />
-              </FormField>
+          <div className="space-y-6">
+            <Card title="Perfil de Requisitos y Conocimientos Base">
+              <div className="space-y-4">
+                <FormField label="Educación Requerida">
+                  <Textarea 
+                    value={educacion}
+                    onChange={(e) => setEducacion(e.target.value)}
+                    placeholder="Ej: Profesional en Ingeniería Industrial, Tecnólogo en Administración de Empresas..."
+                    className="min-h-[80px]"
+                  />
+                </FormField>
 
-              <FormField label="Experiencia Laboral Requerida">
-                <Textarea 
-                  value={experiencia}
-                  onChange={(e) => setExperiencia(e.target.value)}
-                  placeholder="Ej: Mínimo 2 años en cargos similares liderando equipos..."
-                  className="min-h-[80px]"
-                />
-              </FormField>
+                <FormField label="Experiencia Laboral Requerida">
+                  <Textarea 
+                    value={experiencia}
+                    onChange={(e) => setExperiencia(e.target.value)}
+                    placeholder="Ej: Mínimo 2 años en cargos similares liderando equipos..."
+                    className="min-h-[80px]"
+                  />
+                </FormField>
 
-              <FormField label="Formación o Conocimientos Adicionales">
-                <Textarea 
-                  value={formacion}
-                  onChange={(e) => setFormacion(e.target.value)}
-                  placeholder="Ej: Curso de 50 horas SG-SST, Especialización en Gerencia de Proyectos..."
-                  className="min-h-[80px]"
-                />
-              </FormField>
+                <FormField label="Formación o Conocimientos Adicionales (Referencia General)">
+                  <Textarea 
+                    value={formacion}
+                    onChange={(e) => setFormacion(e.target.value)}
+                    placeholder="Ej: Especialización en Gerencia de Proyectos, diplomados o conocimientos complementarios..."
+                    className="min-h-[80px]"
+                  />
+                </FormField>
 
-              <FormField label="Habilidades Blandas / Atributos Personales">
-                <Textarea 
-                  value={habilidades}
-                  onChange={(e) => setHabilidades(e.target.value)}
-                  placeholder="Ej: Liderazgo positivo, Negociación asertiva, Trabajo en equipo..."
-                  className="min-h-[80px]"
-                />
-              </FormField>
-            </div>
-          </Card>
+                <FormField label="Habilidades Blandas / Atributos Personales">
+                  <Textarea 
+                    value={habilidades}
+                    onChange={(e) => setHabilidades(e.target.value)}
+                    placeholder="Ej: Liderazgo positivo, Negociación asertiva, Trabajo en equipo..."
+                    className="min-h-[80px]"
+                  />
+                </FormField>
+              </div>
+            </Card>
+
+            {/* Formación Requerida (Cursos y Certificaciones Exigidas por Cargo) */}
+            <Card title="Formación Requerida (Cursos y Certificaciones)">
+              <div className="space-y-4">
+                <p className="text-xs text-slate-500">
+                  Defina los cursos y certificaciones obligatorios u opcionales para este cargo. 
+                  El sistema comparará estos requisitos contra el expediente de cada trabajador para identificar brechas y vencimientos.
+                </p>
+
+                {/* Buscador y selector de cursos del catálogo */}
+                <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <div className="flex-1">
+                      <select
+                        value={selectedCursoToAdd}
+                        onChange={(e) => setSelectedCursoToAdd(e.target.value)}
+                        className="w-full text-xs rounded-lg border-slate-200 py-2 px-3 text-slate-800 focus:ring-brand-500 focus:border-brand-500 bg-white"
+                      >
+                        <option value="">Seleccione un curso del catálogo de la empresa...</option>
+                        {catalogoCursos
+                          .filter(c => !requisitosFormacionList.some(r => r.curso_id === c.id))
+                          .map(c => (
+                            <option key={c.id} value={c.id}>
+                              {c.nombre} ({c.categoria_display || c.categoria.toUpperCase()}) {c.vigencia_meses ? `· Vigencia: ${c.vigencia_meses} meses` : '· Sin vencimiento'}
+                            </option>
+                          ))}
+                      </select>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      disabled={!selectedCursoToAdd}
+                      onClick={() => {
+                        const c = catalogoCursos.find(item => item.id === selectedCursoToAdd)
+                        if (c) {
+                          addRequisitoFormacion(c)
+                          setSelectedCursoToAdd('')
+                        }
+                      }}
+                      icon={<Plus className="w-4 h-4" />}
+                    >
+                      Exigir Curso
+                    </Button>
+                  </div>
+
+                  {/* Chips de sugerencias del catálogo */}
+                  <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                    <span className="text-[11px] font-semibold text-slate-500 mr-1 flex items-center gap-1">
+                      <Lightbulb className="w-3.5 h-3.5 text-amber-500" /> Cursos sugeridos:
+                    </span>
+                    {catalogoCursos.map(c => {
+                      const yaAgregado = requisitosFormacionList.some(r => r.curso_id === c.id)
+                      return (
+                        <button
+                          key={c.id}
+                          type="button"
+                          disabled={yaAgregado}
+                          onClick={() => addRequisitoFormacion(c)}
+                          className={`text-[10px] px-2.5 py-1 rounded-full border transition-all ${
+                            yaAgregado 
+                              ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed'
+                              : 'bg-white text-slate-700 border-slate-300 hover:border-brand-500 hover:text-brand-600 shadow-2xs'
+                          }`}
+                        >
+                          + {c.nombre}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+
+                {/* Lista de cursos exigidos */}
+                {requisitosFormacionList.length === 0 ? (
+                  <div className="text-center py-8 bg-slate-50/50 rounded-xl border border-dashed border-slate-200">
+                    <GraduationCap className="w-8 h-8 text-slate-300 mx-auto mb-1.5" />
+                    <p className="text-xs text-slate-600 font-semibold">Ningún curso exigido todavía</p>
+                    <p className="text-[11px] text-slate-400 mt-0.5">
+                      Los cursos como 50h SST, Alturas o Manejo Defensivo aplican solo a cargos específicos y deben agregarse manualmente.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {requisitosFormacionList.map((req, idx) => {
+                      const esSst50o20 = req.curso_nombre.toLowerCase().includes('50 horas') || req.curso_nombre.toLowerCase().includes('20 horas')
+                      return (
+                        <div key={req.curso_id || idx} className="p-4 bg-white border border-slate-200 rounded-xl space-y-3 shadow-2xs">
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-2.5">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="text-xs font-bold text-slate-900">{req.curso_nombre}</span>
+                              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 uppercase tracking-wide">
+                                {req.curso_categoria_display || req.curso_categoria}
+                              </span>
+                              {req.grupo_alternativo && (
+                                <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">
+                                  Grupo Alternativo: {req.grupo_alternativo}
+                                </span>
+                              )}
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => removeRequisitoFormacion(idx)}
+                              className="text-slate-400 hover:text-rose-600 transition-colors p-1"
+                              title="Eliminar este requisito"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+                            {/* Interruptor Obligatorio */}
+                            <div className="flex items-center gap-2 pt-1">
+                              <input
+                                type="checkbox"
+                                id={`req-obl-${idx}`}
+                                checked={req.obligatorio}
+                                onChange={(e) => updateRequisitoFormacion(idx, 'obligatorio', e.target.checked)}
+                                className="rounded border-slate-300 text-brand-600 focus:ring-brand-500 h-4 w-4"
+                              />
+                              <label htmlFor={`req-obl-${idx}`} className="text-xs font-medium text-slate-700 select-none cursor-pointer">
+                                {req.obligatorio ? 'Obligatorio para el cargo' : 'Opcional / Deseable'}
+                              </label>
+                            </div>
+
+                            {/* Vigencia exigida en meses */}
+                            <div>
+                              <label className="text-[11px] font-medium text-slate-600 block mb-1">Vigencia exigida (meses):</label>
+                              <input
+                                type="number"
+                                min="1"
+                                placeholder="Sin vencimiento"
+                                value={req.vigencia_meses ?? ''}
+                                onChange={(e) => updateRequisitoFormacion(idx, 'vigencia_meses', e.target.value ? parseInt(e.target.value) : null)}
+                                className="w-full text-xs rounded-lg border-slate-200 py-1.5 px-2.5 text-slate-800"
+                              />
+                            </div>
+
+                            {/* Grupo alternativo */}
+                            <div>
+                              <label className="text-[11px] font-medium text-slate-600 block mb-1">Grupo alternativo:</label>
+                              <div className="flex gap-1.5">
+                                <input
+                                  type="text"
+                                  placeholder="Ej: sst_responsable"
+                                  value={req.grupo_alternativo || ''}
+                                  onChange={(e) => updateRequisitoFormacion(idx, 'grupo_alternativo', e.target.value || null)}
+                                  className="w-full text-xs rounded-lg border-slate-200 py-1.5 px-2.5 text-slate-800"
+                                />
+                                {esSst50o20 && !req.grupo_alternativo && (
+                                  <button
+                                    type="button"
+                                    onClick={() => updateRequisitoFormacion(idx, 'grupo_alternativo', 'sst_responsable')}
+                                    className="text-[10px] px-2 py-0.5 rounded bg-blue-50 text-blue-700 hover:bg-blue-100 font-medium whitespace-nowrap"
+                                    title="Marcar como alternativa para 50h / 20h"
+                                  >
+                                    Grupo SST
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+
+                          {req.grupo_alternativo && (
+                            <div className="text-[11px] text-blue-800 bg-blue-50/70 p-2.5 rounded-lg flex items-center gap-2 border border-blue-100">
+                              <Info className="w-4 h-4 text-blue-600 shrink-0" />
+                              <span>
+                                <strong>Aviso de curso alternativo:</strong> Los cursos asignados al grupo <em>"{req.grupo_alternativo}"</em> son alternativos entre sí. Cumplir cualquiera de ellos basta para satisfacer el requisito del cargo.
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            </Card>
+          </div>
         )}
 
         {/* Tab 3: Funciones y Competencias */}
@@ -737,51 +1040,124 @@ export default function PerfilCargoFormView() {
               )}
             </Card>
 
-            {/* Competencias Específicas */}
-            <Card 
-              title="Competencias Específicas del Rol" 
-              action={
-                <Button onClick={addCompetencia} variant="ghost" className="flex items-center gap-1.5 py-1 text-xs bg-slate-50 border border-slate-200">
-                  <Plus className="w-3.5 h-3.5" /> Agregar Competencia
-                </Button>
-              }
-            >
-              {competenciasList.length === 0 ? (
-                <div className="py-6 text-center text-xs text-slate-400 italic">No se han registrado competencias.</div>
-              ) : (
-                <div className="space-y-3">
-                  {competenciasList.map((c, idx) => (
-                    <div key={idx} className="flex gap-3 items-center group">
-                      <span className="text-xs font-bold text-slate-400 w-5">{idx + 1}.</span>
-                      <Input 
-                        value={c.nombre}
-                        onChange={(e) => updateCompetencia(idx, 'nombre', e.target.value)}
-                        placeholder="Ej: Dominio de software CAD, Trabajo bajo presión..."
-                        className="flex-grow text-xs py-2"
-                      />
-                      <Select 
-                        value={c.nivel}
-                        onChange={(e) => updateCompetencia(idx, 'nivel', e.target.value)}
-                        options={[
-                          { value: 'Básico', label: 'Básico' },
-                          { value: 'Intermedio', label: 'Intermedio' },
-                          { value: 'Avanzado', label: 'Avanzado' },
-                          { value: 'Experto', label: 'Experto' }
-                        ]}
-                        className="w-40 text-xs py-2"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => removeCompetencia(idx)}
-                        className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg opacity-40 group-hover:opacity-100 transition-all"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+            {/* Leyenda de niveles */}
+            <div className="border border-slate-200 rounded-lg bg-slate-50 p-3">
+              <button
+                type="button"
+                onClick={() => setShowNivelesLeyenda(!showNivelesLeyenda)}
+                className="flex items-center gap-2 text-xs text-slate-600 hover:text-primary-600 transition-colors w-full"
+              >
+                <Info className="w-3.5 h-3.5" />
+                <span className="font-medium">¿Qué significa cada nivel?</span>
+                {showNivelesLeyenda ? <ChevronUp className="w-3.5 h-3.5 ml-auto" /> : <ChevronDown className="w-3.5 h-3.5 ml-auto" />}
+              </button>
+              {showNivelesLeyenda && (
+                <div className="mt-2 space-y-1.5 pl-5">
+                  {ESCALA_NIVELES.map(n => (
+                    <div key={n.value} className="flex gap-2 text-[11px]">
+                      <span className="font-bold text-slate-700 min-w-[120px]">{n.label}</span>
+                      <span className="text-slate-500">{n.desc}</span>
                     </div>
                   ))}
                 </div>
               )}
-            </Card>
+            </div>
+
+            {/* Tres grupos de competencias */}
+            {([
+              { tipo: 'tecnica' as const, label: 'Técnicas', sublabel: 'Saber hacer', color: 'emerald', sugerencias: SUGERENCIAS_COMPETENCIAS.tecnica },
+              { tipo: 'blanda' as const, label: 'Conductuales', sublabel: 'Saber ser', color: 'blue', sugerencias: SUGERENCIAS_COMPETENCIAS.blanda },
+              { tipo: 'organizacional' as const, label: 'Organizacionales', sublabel: 'Saber actuar', color: 'violet', sugerencias: SUGERENCIAS_COMPETENCIAS.organizacional },
+            ]).map(grupo => {
+              const compsGrupo = competenciasList
+                .map((c, idx) => ({ ...c, _idx: idx }))
+                .filter(c => c.tipo === grupo.tipo)
+
+              return (
+                <Card
+                  key={grupo.tipo}
+                  title={`${grupo.label} — ${grupo.sublabel}`}
+                  action={
+                    <Button
+                      onClick={() => addCompetencia(grupo.tipo)}
+                      variant="ghost"
+                      className="flex items-center gap-1.5 py-1 text-xs bg-slate-50 border border-slate-200"
+                    >
+                      <Plus className="w-3.5 h-3.5" /> Agregar
+                    </Button>
+                  }
+                >
+                  {/* Sugerencias rápidas */}
+                  <div className="flex flex-wrap gap-1.5 mb-3">
+                    <Lightbulb className="w-3.5 h-3.5 text-amber-500 mt-0.5" />
+                    {grupo.sugerencias.map(sug => {
+                      const yaExiste = competenciasList.some(
+                        c => c.nombre.toLowerCase() === sug.nombre.toLowerCase() && c.tipo === grupo.tipo
+                      )
+                      return (
+                        <button
+                          key={sug.nombre}
+                          type="button"
+                          disabled={yaExiste}
+                          onClick={() => addSugerencia(grupo.tipo, sug)}
+                          className={`px-2 py-0.5 rounded-full text-[11px] border transition-all ${
+                            yaExiste
+                              ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-default'
+                              : `bg-white hover:bg-${grupo.color}-50 text-slate-600 hover:text-${grupo.color}-700 border-slate-200 hover:border-${grupo.color}-300`
+                          }`}
+                        >
+                          {yaExiste ? '✓ ' : '+ '}{sug.nombre}
+                        </button>
+                      )
+                    })}
+                  </div>
+
+                  {compsGrupo.length === 0 ? (
+                    <div className="py-4 text-center text-xs text-slate-400 italic">
+                      Aún no hay competencias {grupo.label.toLowerCase()}. Agrega una o usa las sugerencias.
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {compsGrupo.map(c => (
+                        <div key={c._idx} className="p-3 rounded-lg border border-slate-200 bg-white group hover:border-slate-300 transition-colors">
+                          <div className="flex gap-3 items-start">
+                            <div className="flex-grow space-y-2">
+                              <Input
+                                value={c.nombre}
+                                onChange={(e) => updateCompetencia(c._idx, 'nombre', e.target.value)}
+                                placeholder="Nombre de la competencia"
+                                className="text-xs py-2 font-medium"
+                              />
+                              <Input
+                                value={c.descripcion}
+                                onChange={(e) => updateCompetencia(c._idx, 'descripcion', e.target.value)}
+                                placeholder="Descripción breve de lo esperado en este cargo"
+                                className="text-[11px] py-1.5 text-slate-600"
+                              />
+                            </div>
+                            <div className="flex flex-col items-end gap-1.5 min-w-[160px]">
+                              <Select
+                                value={String(c.nivel_requerido)}
+                                onChange={(e) => updateCompetencia(c._idx, 'nivel_requerido', Number(e.target.value))}
+                                options={ESCALA_NIVELES.map(n => ({ value: String(n.value), label: n.label }))}
+                                className="w-full text-xs py-2"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => removeCompetencia(c._idx)}
+                                className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg opacity-40 group-hover:opacity-100 transition-all"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </Card>
+              )
+            })}
           </div>
         )}
 

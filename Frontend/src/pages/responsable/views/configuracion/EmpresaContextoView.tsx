@@ -929,7 +929,7 @@ export default function EmpresaContextoView() {
                 <div>
                   <h3 className="font-black text-base">Transición de Capítulo Normativo</h3>
                   <p className="text-xs text-amber-100">
-                    Cambio en las condiciones organizacionales detectado (RF-USR-03)
+                    Cambio en las condiciones organizacionales detectado
                   </p>
                 </div>
               </div>

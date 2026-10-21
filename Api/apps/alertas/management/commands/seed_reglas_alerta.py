@@ -52,12 +52,72 @@ REGLAS_ESTANDAR = [
         "nombre": "Vencimiento / Renovación de Afiliación a Seguridad Social (15 días)",
         "modelo_origen": "AfiliacionTrabajador",
         "campo_fecha": "fecha_vencimiento",
+        "tipo_handler": "exacta",
         "dias_anticipacion": 15,
         "nivel_criticidad": Notificacion.Nivel.CRITICO,
         "mensaje_template": "La afiliación a {tipo} del trabajador {trabajador} requiere validación o vence en {dias} días ({fecha}).",
         "roles_destinatarios": ["RESPONSABLE"],
     },
+    # -----------------------------------------------------------------------
+    # Fase 5 — Alertas de Formación & Competencias
+    # -----------------------------------------------------------------------
+    {
+        "codigo": "FORM_CURSO_POR_VENCER_30D",
+        "nombre": "Curso Obligatorio por Vencer (30 días)",
+        "modelo_origen": "RegistroFormacion",
+        "campo_fecha": "fecha_vencimiento",
+        "tipo_handler": "exacta",
+        "dias_anticipacion": 30,
+        "nivel_criticidad": Notificacion.Nivel.IMPORTANTE,
+        "mensaje_template": (
+            "El certificado de '{curso}' de {trabajador} vence en {dias} días ({fecha}). "
+            "Cargo: {cargo}."
+        ),
+        "roles_destinatarios": ["RESPONSABLE"],
+    },
+    {
+        "codigo": "FORM_CURSO_VENCIDO",
+        "nombre": "Curso Obligatorio Vencido",
+        "modelo_origen": "RegistroFormacion",
+        "campo_fecha": "fecha_vencimiento",
+        "tipo_handler": "vencido_rango",
+        "dias_anticipacion": 0,
+        "nivel_criticidad": Notificacion.Nivel.CRITICO,
+        "mensaje_template": (
+            "El certificado de '{curso}' de {trabajador} (Doc: {documento}) está VENCIDO "
+            "(venció: {fecha}). Cargo: {cargo}. Renovar urgente."
+        ),
+        "roles_destinatarios": ["RESPONSABLE", "ALTA_DIRECCION"],
+    },
+    {
+        "codigo": "FORM_CURSO_SIN_REGISTRAR",
+        "nombre": "Curso Obligatorio Sin Registrar",
+        "modelo_origen": "RegistroFormacion",
+        "campo_fecha": "",
+        "tipo_handler": "sin_registrar",
+        "dias_anticipacion": 0,
+        "nivel_criticidad": Notificacion.Nivel.IMPORTANTE,
+        "mensaje_template": (
+            "El trabajador {trabajador} (Cargo: {cargo}) no registra el curso obligatorio '{curso}'."
+        ),
+        "roles_destinatarios": ["RESPONSABLE"],
+    },
+    {
+        "codigo": "FORM_EVALUACION_COMPETENCIA_PENDIENTE",
+        "nombre": "Evaluación de Competencia Pendiente o con Brecha",
+        "modelo_origen": "EvaluacionCompetencia",
+        "campo_fecha": "",
+        "tipo_handler": "evaluacion_pendiente",
+        "dias_anticipacion": 0,
+        "nivel_criticidad": Notificacion.Nivel.NORMAL,
+        "mensaje_template": (
+            "El trabajador {trabajador} (Cargo: {cargo}) tiene una brecha en la competencia "
+            "'{competencia}' y requiere capacitación."
+        ),
+        "roles_destinatarios": ["RESPONSABLE"],
+    },
 ]
+
 
 
 class Command(BaseCommand):
@@ -74,6 +134,7 @@ class Command(BaseCommand):
                     "nombre": data["nombre"],
                     "modelo_origen": data["modelo_origen"],
                     "campo_fecha": data["campo_fecha"],
+                    "tipo_handler": data.get("tipo_handler", ReglaAlerta.TipoHandler.EXACTA),
                     "dias_anticipacion": data["dias_anticipacion"],
                     "nivel_criticidad": data["nivel_criticidad"],
                     "mensaje_template": data["mensaje_template"],

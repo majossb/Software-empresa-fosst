@@ -11,8 +11,10 @@ import {
 } from '@/services/gestion-humana.service'
 import {
   Users, Stethoscope, FileText, Calendar, Plus,
-  CheckCircle2, AlertCircle, ArrowRight, X, ShieldAlert
+  CheckCircle2, AlertCircle, ArrowRight, X, ShieldAlert,
+  GraduationCap
 } from 'lucide-react'
+import { RegistrarCursoModal } from '@/components/formacion/RegistrarCursoModal'
 
 export default function GestionHumanaView() {
   const [trabajadores, setTrabajadores] = useState<Trabajador[]>([])
@@ -24,6 +26,8 @@ export default function GestionHumanaView() {
   // Modals state
   const [showNovedadModal, setShowNovedadModal] = useState(false)
   const [showExamenModal, setShowExamenModal] = useState(false)
+  const [showCursoModal, setShowCursoModal] = useState(false)
+  const [cursoModalPreselectedId, setCursoModalPreselectedId] = useState<string | undefined>(undefined)
 
   useEffect(() => {
     cargarTrabajadores()
@@ -124,7 +128,7 @@ export default function GestionHumanaView() {
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
                 <FileText className="w-5 h-5 text-primary-500" />
-                Carga Masiva de Trabajadores (RF-RH-11)
+                Carga Masiva de Trabajadores
               </h3>
               <button onClick={() => setShowImportModal(false)} className="text-slate-400 hover:text-slate-600">
                 <X className="w-5 h-5" />
@@ -259,6 +263,114 @@ export default function GestionHumanaView() {
                 <div className="py-12 text-center text-slate-400 text-sm">Cargando expediente consolidado...</div>
               ) : expediente && (
                 <div className="space-y-6">
+                  {/* Training & Certifications Section (Fase 2) */}
+                  <div className="space-y-3 pb-4 border-b border-slate-100">
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                        <GraduationCap className="w-4 h-4 text-emerald-600" />
+                        Formación y Certificaciones del Cargo
+                      </h4>
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        className="!text-[11px] !py-1 !px-2.5"
+                        onClick={() => {
+                          setCursoModalPreselectedId(undefined)
+                          setShowCursoModal(true)
+                        }}
+                        icon={<Plus className="w-3.5 h-3.5" />}
+                      >
+                        Registrar Curso
+                      </Button>
+                    </div>
+
+                    {expediente.formacion?.resumen && (
+                      <div className="grid grid-cols-4 gap-2 text-center text-xs">
+                        <div className="p-2 bg-slate-50 rounded-lg border border-slate-200">
+                          <span className="text-[10px] text-slate-500 block">Exigidos</span>
+                          <strong className="text-slate-800">{expediente.formacion.resumen.total_exigidos}</strong>
+                        </div>
+                        <div className="p-2 bg-emerald-50 rounded-lg border border-emerald-200">
+                          <span className="text-[10px] text-emerald-700 block">Vigentes</span>
+                          <strong className="text-emerald-800">{expediente.formacion.resumen.cumplidos}</strong>
+                        </div>
+                        <div className="p-2 bg-amber-50 rounded-lg border border-amber-200">
+                          <span className="text-[10px] text-amber-700 block">Por Vencer</span>
+                          <strong className="text-amber-800">{expediente.formacion.resumen.por_vencer}</strong>
+                        </div>
+                        <div className="p-2 bg-rose-50 rounded-lg border border-rose-200">
+                          <span className="text-[10px] text-rose-700 block">Faltantes</span>
+                          <strong className="text-rose-800">{expediente.formacion.resumen.faltantes}</strong>
+                        </div>
+                      </div>
+                    )}
+
+                    {(!expediente.formacion || expediente.formacion.cursos.length === 0) ? (
+                      <div className="p-3 text-center text-xs text-slate-400 bg-slate-50 rounded-lg">
+                        No registra cursos obligatorios para este cargo.
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        {expediente.formacion.cursos.map((c) => (
+                          <div key={c.curso_id} className="p-3 rounded-lg bg-slate-50 border border-slate-100 flex items-center justify-between text-xs">
+                            <div className="space-y-0.5">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className="font-semibold text-slate-800">{c.curso_nombre}</span>
+                                <span className="text-[10px] px-1.5 py-0.2 rounded bg-slate-200/70 text-slate-600">
+                                  {c.categoria_display || c.categoria}
+                                </span>
+                              </div>
+                              {c.ultimo_registro ? (
+                                <p className="text-[11px] text-slate-500">
+                                  Vence: {c.ultimo_registro.fecha_vencimiento || 'Sin vencimiento'} {c.ultimo_registro.entidad_emisora ? `· ${c.ultimo_registro.entidad_emisora}` : ''}
+                                </p>
+                              ) : (
+                                <p className="text-[11px] text-slate-400 italic">No realizado</p>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-2">
+                              {c.estado === 'vigente' && (
+                                <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-100 text-emerald-800">
+                                  Vigente
+                                </span>
+                              )}
+                              {c.estado === 'por_vencer' && (
+                                <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-100 text-amber-800">
+                                  Por vencer ({c.ultimo_registro?.dias_para_vencer}d)
+                                </span>
+                              )}
+                              {c.estado === 'vencido' && (
+                                <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-rose-100 text-rose-800">
+                                  Vencido
+                                </span>
+                              )}
+                              {c.estado === 'falta' && (
+                                <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-slate-200 text-slate-700">
+                                  Falta
+                                </span>
+                              )}
+                              {c.estado === 'cumple_alternativa' && (
+                                <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-blue-100 text-blue-800">
+                                  Cumple alternativa
+                                </span>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setCursoModalPreselectedId(c.curso_id)
+                                  setShowCursoModal(true)
+                                }}
+                                className="text-[11px] text-brand-600 hover:underline font-medium ml-1"
+                              >
+                                {c.ultimo_registro ? 'Renovar' : 'Registrar'}
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
                   {/* Medical Exams Section */}
                   <div className="space-y-3">
                     <div className="flex items-center justify-between">
@@ -365,6 +477,19 @@ export default function GestionHumanaView() {
           </div>
         )}
       </div>
+
+      {selectedTrabajador && (
+        <RegistrarCursoModal
+          isOpen={showCursoModal}
+          onClose={() => setShowCursoModal(false)}
+          trabajadorId={selectedTrabajador.id}
+          trabajadorNombre={selectedTrabajador.nombre}
+          preselectedCursoId={cursoModalPreselectedId}
+          onSuccess={() => {
+            verExpediente(selectedTrabajador)
+          }}
+        />
+      )}
     </div>
   )
 }

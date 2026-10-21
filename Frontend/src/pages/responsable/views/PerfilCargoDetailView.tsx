@@ -65,16 +65,16 @@ export default function PerfilCargoDetailView() {
       ? 'bg-amber-500 text-slate-900'
       : 'bg-emerald-600 text-white'
 
-  // Competencias con 4 niveles (1=Básico, 2=Intermedio, 3=Avanzado, 4=Experto)
+  // Competencias con 5 niveles (1=Básico, 2=En desarrollo, 3=Autónomo, 4=Dominio avanzado, 5=Referente)
   const renderLevelDots = (level: number = 3, dotColor: string = 'text-emerald-500') => {
     return (
-      <div className="flex items-center gap-1">
-        {[1, 2, 3, 4].map((dot) => (
+      <div className="flex items-center gap-1" title={`Nivel ${level} de 5`}>
+        {[1, 2, 3, 4, 5].map((dot) => (
           <span
             key={dot}
             className={`w-2 h-2 rounded-full ${
               dot <= level 
-                ? (dotColor === 'text-emerald-500' ? 'bg-emerald-500' : dotColor === 'text-blue-500' ? 'bg-blue-500' : 'bg-primary-500') 
+                ? (dotColor === 'text-emerald-500' ? 'bg-emerald-500' : dotColor === 'text-purple-500' ? 'bg-purple-500' : 'bg-primary-500') 
                 : 'bg-slate-300 dark:bg-slate-700'
             }`}
           />
@@ -82,6 +82,13 @@ export default function PerfilCargoDetailView() {
       </div>
     )
   }
+
+  // Competencias del cargo agrupadas por tipo
+  const competencias = perfil.competencias || []
+  const tecnicas = competencias.filter(c => c.tipo === 'tecnica')
+  const conductuales = competencias.filter(c => c.tipo === 'blanda' || c.tipo === 'conductual')
+  const organizacionales = competencias.filter(c => c.tipo === 'organizacional')
+  const otrasCompetencias = competencias.filter(c => !['tecnica', 'blanda', 'conductual', 'organizacional'].includes(c.tipo || ''))
 
   return (
     <div className="animate-fade-in space-y-6 pb-16">
@@ -386,13 +393,38 @@ export default function PerfilCargoDetailView() {
                 <div>
                   <span className="font-bold text-slate-900 block flex items-center gap-1.5">
                     <Award className="w-4 h-4 text-emerald-600" />
-                    Certificaciones requeridas:
+                    Cursos y certificaciones requeridas:
                   </span>
-                  <ul className="text-slate-700 pl-5 space-y-0.5">
-                    <li>• Curso de Conducción Defensiva (vigente)</li>
-                    <li>• Curso PESV (vigente)</li>
-                    <li>• Primeros Auxilios (deseable)</li>
-                  </ul>
+                  {perfil.requisitos_formacion && perfil.requisitos_formacion.length > 0 ? (
+                    <div className="pl-5 pt-1 space-y-1">
+                      {perfil.requisitos_formacion.map((req, idx) => (
+                        <div key={req.id || idx} className="flex items-center justify-between gap-2 text-slate-700">
+                          <span className="font-medium">• {req.curso_nombre}</span>
+                          <div className="flex items-center gap-1 text-[10px]">
+                            <span className={`px-1.5 py-0.2 rounded font-semibold ${
+                              req.obligatorio ? 'bg-rose-50 text-rose-700 border border-rose-200' : 'bg-slate-100 text-slate-600'
+                            }`}>
+                              {req.obligatorio ? 'Obligatorio' : 'Opcional'}
+                            </span>
+                            {req.vigencia_meses && (
+                              <span className="text-slate-500">
+                                ({req.vigencia_meses}m)
+                              </span>
+                            )}
+                            {req.grupo_alternativo && (
+                              <span className="text-blue-600 font-medium" title="Cumplir cualquiera de este grupo satisface el requisito">
+                                [Alt: {req.grupo_alternativo}]
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-slate-500 italic pl-5 text-[10px] pt-0.5">
+                      {perfil.formacion || 'No se han especificado certificaciones obligatorias para este cargo.'}
+                    </p>
+                  )}
                 </div>
 
                 <div>
@@ -469,90 +501,119 @@ export default function PerfilCargoDetailView() {
                 COMPETENCIAS REQUERIDAS
               </div>
               <div className="p-3 bg-white space-y-3 text-[11px]">
-                {/* Técnicas */}
-                <div>
-                  <div className="flex justify-between items-center mb-1 text-emerald-800 font-bold border-b border-emerald-100 pb-0.5">
-                    <span>Técnicas (Saber hacer)</span>
-                    <span className="text-[9px] text-slate-500">Nivel</span>
-                  </div>
-                  <div className="space-y-1 text-slate-700">
-                    <div className="flex justify-between items-center">
-                      <span>• Conducción defensiva</span>
-                      {renderLevelDots(3, 'text-emerald-500')}
+                {competencias.length === 0 ? (
+                  <p className="text-slate-500 italic text-[11px] text-center py-3">
+                    No se han registrado competencias para este cargo.
+                  </p>
+                ) : (
+                  <>
+                    {/* Técnicas */}
+                    <div>
+                      <div className="flex justify-between items-center mb-1 text-emerald-800 font-bold border-b border-emerald-100 pb-0.5">
+                        <span>Técnicas (Saber hacer)</span>
+                        <span className="text-[9px] text-slate-500 font-normal">Nivel</span>
+                      </div>
+                      {tecnicas.length > 0 ? (
+                        <div className="space-y-1.5 text-slate-700">
+                          {tecnicas.map((comp, idx) => (
+                            <div key={comp.id || idx} className="space-y-0.5">
+                              <div className="flex justify-between items-center">
+                                <span className="font-medium">• {comp.nombre}</span>
+                                {renderLevelDots(comp.nivel_requerido || 3, 'text-emerald-500')}
+                              </div>
+                              {comp.descripcion && (
+                                <p className="text-[10px] text-slate-500 pl-2 leading-tight">{comp.descripcion}</p>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-[10px] text-slate-400 italic py-0.5">No registradas</p>
+                      )}
                     </div>
-                    <div className="flex justify-between items-center">
-                      <span>• Normas de tránsito y PESV</span>
-                      {renderLevelDots(4, 'text-emerald-500')}
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <span>• Inspección preoperacional</span>
-                      {renderLevelDots(4, 'text-emerald-500')}
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <span>• Conocimiento de rutas</span>
-                      {renderLevelDots(3, 'text-emerald-500')}
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <span>• Manejo de emergencias viales</span>
-                      {renderLevelDots(3, 'text-emerald-500')}
-                    </div>
-                  </div>
-                </div>
 
-                {/* Blandas */}
-                <div>
-                  <div className="flex justify-between items-center mb-1 text-primary-500 font-bold border-b border-primary-100 pb-0.5">
-                    <span>Blandas (Saber ser)</span>
-                    <span className="text-[9px] text-slate-500">Nivel</span>
-                  </div>
-                  <div className="space-y-1 text-slate-700">
-                    <div className="flex justify-between items-center">
-                      <span>• Responsabilidad</span>
-                      {renderLevelDots(4, 'text-primary-500')}
+                    {/* Conductuales */}
+                    <div>
+                      <div className="flex justify-between items-center mb-1 text-primary-600 font-bold border-b border-primary-100 pb-0.5">
+                        <span>Conductuales (Saber ser)</span>
+                        <span className="text-[9px] text-slate-500 font-normal">Nivel</span>
+                      </div>
+                      {conductuales.length > 0 ? (
+                        <div className="space-y-1.5 text-slate-700">
+                          {conductuales.map((comp, idx) => (
+                            <div key={comp.id || idx} className="space-y-0.5">
+                              <div className="flex justify-between items-center">
+                                <span className="font-medium">• {comp.nombre}</span>
+                                {renderLevelDots(comp.nivel_requerido || 3, 'bg-primary-500')}
+                              </div>
+                              {comp.descripcion && (
+                                <p className="text-[10px] text-slate-500 pl-2 leading-tight">{comp.descripcion}</p>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-[10px] text-slate-400 italic py-0.5">No registradas</p>
+                      )}
                     </div>
-                    <div className="flex justify-between items-center">
-                      <span>• Atención al detalle</span>
-                      {renderLevelDots(3, 'text-primary-500')}
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <span>• Autocontrol y calma</span>
-                      {renderLevelDots(4, 'text-primary-500')}
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <span>• Orientación al servicio</span>
-                      {renderLevelDots(3, 'text-primary-500')}
-                    </div>
-                  </div>
-                </div>
 
-                {/* Organizacionales */}
-                <div>
-                  <div className="flex justify-between items-center mb-1 text-primary-500 font-bold border-b border-slate-100 pb-0.5">
-                    <span>Organizacionales (Saber actuar)</span>
-                    <span className="text-[9px] text-slate-500">Nivel</span>
-                  </div>
-                  <div className="space-y-1 text-slate-700">
-                    <div className="flex justify-between items-center">
-                      <span>• Cumplimiento normativo</span>
-                      {renderLevelDots(4, 'text-primary-500')}
+                    {/* Organizacionales */}
+                    <div>
+                      <div className="flex justify-between items-center mb-1 text-purple-700 font-bold border-b border-purple-100 pb-0.5">
+                        <span>Organizacionales (Saber actuar)</span>
+                        <span className="text-[9px] text-slate-500 font-normal">Nivel</span>
+                      </div>
+                      {organizacionales.length > 0 ? (
+                        <div className="space-y-1.5 text-slate-700">
+                          {organizacionales.map((comp, idx) => (
+                            <div key={comp.id || idx} className="space-y-0.5">
+                              <div className="flex justify-between items-center">
+                                <span className="font-medium">• {comp.nombre}</span>
+                                {renderLevelDots(comp.nivel_requerido || 3, 'text-purple-500')}
+                              </div>
+                              {comp.descripcion && (
+                                <p className="text-[10px] text-slate-500 pl-2 leading-tight">{comp.descripcion}</p>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-[10px] text-slate-400 italic py-0.5">No registradas</p>
+                      )}
                     </div>
-                    <div className="flex justify-between items-center">
-                      <span>• Compromiso con la seguridad</span>
-                      {renderLevelDots(4, 'text-primary-500')}
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <span>• Ética y transparencia</span>
-                      {renderLevelDots(4, 'text-primary-500')}
-                    </div>
-                  </div>
-                </div>
 
-                {/* Leyenda */}
-                <div className="pt-2 border-t border-slate-200 text-[9px] text-slate-500 flex justify-between">
+                    {/* Otras competencias sin tipo */}
+                    {otrasCompetencias.length > 0 && (
+                      <div>
+                        <div className="flex justify-between items-center mb-1 text-slate-700 font-bold border-b border-slate-100 pb-0.5">
+                          <span>Otras competencias</span>
+                          <span className="text-[9px] text-slate-500 font-normal">Nivel</span>
+                        </div>
+                        <div className="space-y-1.5 text-slate-700">
+                          {otrasCompetencias.map((comp, idx) => (
+                            <div key={comp.id || idx} className="space-y-0.5">
+                              <div className="flex justify-between items-center">
+                                <span className="font-medium">• {comp.nombre}</span>
+                                {renderLevelDots(comp.nivel_requerido || 3, 'bg-primary-500')}
+                              </div>
+                              {comp.descripcion && (
+                                <p className="text-[10px] text-slate-500 pl-2 leading-tight">{comp.descripcion}</p>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
+
+                {/* Leyenda 1-5 */}
+                <div className="pt-2 border-t border-slate-200 text-[9px] text-slate-500 flex flex-wrap justify-between gap-1">
                   <span>1. Básico</span>
-                  <span>2. Intermedio</span>
-                  <span>3. Avanzado</span>
-                  <span>4. Experto</span>
+                  <span>2. En desarrollo</span>
+                  <span>3. Autónomo</span>
+                  <span>4. Dominio avanzado</span>
+                  <span>5. Referente</span>
                 </div>
               </div>
             </div>

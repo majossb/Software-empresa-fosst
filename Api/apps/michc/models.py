@@ -95,6 +95,7 @@ class DetalleCumplimientoRequisito(models.Model):
         PARCIAL = "parcial", "Cumple Parcialmente"
         NO = "no", "No Cumple"
         NO_APLICA = "no_aplica", "No Aplica"
+        PENDIENTE = "pendiente", "Pendiente de validar"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     evaluacion_habilitacion = models.ForeignKey(
